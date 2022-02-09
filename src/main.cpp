@@ -8,12 +8,18 @@
 // Remove the parts that are not relevant to you, and add your own code
 // for external hardware libraries.
 
-#include <NMEA2000_CAN.h>
-#include <Seasmart.h>
+#include <WiFi.h>
 
-#include "List.h"
+#include <list>
+#include <memory>
+
 #include "N2kDataToNMEA0183.h"
-#include "sensesp_app_builder.h"
+#include "NMEA2000_CAN.h"
+#include "Seasmart.h"
+#include "sensesp/net/http_server.h"
+#include "sensesp/net/networking.h"
+#include "sensesp/system/lambda_consumer.h"
+#include "sensesp_minimal_app_builder.h"
 
 using namespace sensesp;
 
@@ -41,22 +47,30 @@ const unsigned long ReceiveMessages[] PROGMEM = {/*126992L,*/  // System time
                                                  130306L,   // Wind
                                                  0};
 
-uint32_t GetBoardSerialNumber() {
-    uint8_t chipid[6];
-    esp_efuse_mac_get_default(chipid);
-    return chipid[0] + (chipid[1]<<8) + (chipid[2]<<16) + (chipid[3]<<24);
-}
-
 using tWiFiClientPtr = std::shared_ptr<WiFiClient>;
+std::list<tWiFiClientPtr> clients;
+
+tNMEA2000 *nmea2000;
+tN2kDataToNMEA0183 *n2k_data_to_nmea0183;
+
+WiFiServer server(ServerPort, MaxClients);
+
+reactesp::ReactESP app;
+
+uint32_t GetBoardSerialNumber() {
+  uint8_t chipid[6];
+  esp_efuse_mac_get_default(chipid);
+  return chipid[0] + (chipid[1] << 8) + (chipid[2] << 16) + (chipid[3] << 24);
+}
 
 //*****************************************************************************
 void AddClient(WiFiClient &client) {
   Serial.println("New Client.");
-  clients.push_back(tWiFiClientPtr(new WiFiClient(client)));
+  clients.push_back(WiFiClientPtr(new WiFiClient(client)));
 }
 
 //*****************************************************************************
-void StopClient(LinkedList<tWiFiClientPtr>::iterator &it) {
+void StopClient(std::list<tWiFiClientPtr>::iterator &it) {
   Serial.println("Client Disconnected.");
   (*it)->stop();
   it = clients.erase(it);
@@ -118,9 +132,6 @@ void SendNMEA0183Message(const tNMEA0183Msg &NMEA0183Msg) {
   SendBufToClients(buf);
 }
 
-tNMEA2000* nmea2000;
-tN2kDataToNMEA0183* n2k_data_to_nmea0183;
-
 //*****************************************************************************
 void InitNMEA2000() {
   nmea2000->SetN2kCANMsgBufSize(8);
@@ -170,30 +181,43 @@ void InitNMEA2000() {
   nmea2000->Open();
 }
 
-
-WiFiServer server(ServerPort, MaxClients);
-
-using tWiFiClientPtr = std::shared_ptr<WiFiClient>;
-LinkedList<tWiFiClientPtr> clients;
-
-reactesp::ReactESP app;
-
 // The setup function performs one-time application initialization.
 void setup() {
 #ifndef SERIAL_DEBUG_DISABLED
   SetupSerialDebug(115200);
 #endif
 
+  SensESPMinimalAppBuilder builder;
+  SensESPMinimalApp *sensesp_app =
+      builder.set_hostname("sensesp-wifi-gw")->get_app();
+
   // Initialize the NMEA2000 library
   nmea2000 = new tNMEA2000_esp32(kCanTxPin, kCanRxPin);
   n2k_data_to_nmea0183 = new tN2kDataToNMEA0183(nmea2000, 0);
 
+  debugD("Initializing NMEA2000...");
+
   InitNMEA2000();
 
+  auto *networking = new Networking(
+      "/system/net", "", "", SensESPBaseApp::get_hostname(), "thisisfine");
+  auto *http_server = new HTTPServer();
+
+  // Here, we'll do a trick. WiFiServer needs to be instantiated after the
+  // network is initialized, but that happens asynchronously after the app
+  // starts. We'll create a Lambda consumer to listen to the network status
+  // messages and then create the WiFiServer when the network is ready.
+
+  networking->connect_to(new LambdaConsumer<WifiState>([](WifiState state) {
+    if (state == WifiState::kWifiConnectedToAP) {
+      debugD("Initializing WiFi server...");
+      // FIXME: What happens if the WiFi state is temporarily disconnected?
+      server.begin();
+    }
+  }));
+
   // Handle incoming connections
-  app.onRepeat(1, []() {
-    CheckConnections();
-  });
+  app.onRepeat(1, []() { CheckConnections(); });
 
   // Handle incoming NMEA 2000 messages
   app.onRepeat(1, []() {
@@ -201,13 +225,14 @@ void setup() {
     n2k_data_to_nmea0183->Update();
   });
 
-  //app.onAvailable(Serial, []() {
-  //  // Flush the incoming serial buffer
-  //  while (Serial.available()) {
-  //    Serial.read();
-  //  }
-  //});
+  // app.onAvailable(Serial, []() {
+  //   // Flush the incoming serial buffer
+  //   while (Serial.available()) {
+  //     Serial.read();
+  //   }
+  // });
 
+  sensesp_app->start();
 }
 
 void loop() { app.tick(); }
