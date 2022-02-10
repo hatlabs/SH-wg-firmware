@@ -13,9 +13,9 @@
 #include <list>
 #include <memory>
 
-#include "N2kDataToNMEA0183.h"
 #include "NMEA2000_CAN.h"
 #include "Seasmart.h"
+#include "n2k_nmea0183_transform.h"
 #include "sensesp/net/http_server.h"
 #include "sensesp/net/networking.h"
 #include "sensesp/system/lambda_consumer.h"
@@ -53,7 +53,6 @@ using WiFiClientPtr = std::shared_ptr<WiFiClient>;
 std::list<WiFiClientPtr> clients;
 
 tNMEA2000 *nmea2000;
-tN2kDataToNMEA0183 *n2k_data_to_nmea0183;
 
 WiFiServer server(server_port, MaxClients);
 
@@ -125,14 +124,6 @@ String GetSeaSmartString(const tN2kMsg &n2k_msg) {
   }
 }
 
-String GetNMEA0183MessageString(const tNMEA0183Msg &nmea0183_msg) {
-  char buf[MAX_NMEA0183_MESSAGE_SIZE];
-  if (!nmea0183_msg.GetMessage(buf, MAX_NMEA0183_MESSAGE_SIZE)) {
-    return "";
-  }
-  return String(buf);
-}
-
 ObservableValue<tN2kMsg> n2k_msg_input;
 
 void InitNMEA2000() {
@@ -179,8 +170,6 @@ void InitNMEA2000() {
   nmea2000->Open();
 }
 
-ObservableValue<tNMEA0183Msg> nmea0183_msg_observable;
-
 // The setup function performs one-time application initialization.
 void setup() {
 #ifndef SERIAL_DEBUG_DISABLED
@@ -193,12 +182,6 @@ void setup() {
 
   // Initialize the NMEA2000 library
   nmea2000 = new tNMEA2000_esp32(kCanTxPin, kCanRxPin);
-  n2k_data_to_nmea0183 = new tN2kDataToNMEA0183(nmea2000, 0);
-
-  n2k_data_to_nmea0183->SetSendNMEA0183MessageCallback(
-      [](const tNMEA0183Msg &nmea0183_msg) {
-        nmea0183_msg_observable.set(nmea0183_msg);
-      });
 
   debugD("Initializing NMEA2000...");
 
@@ -214,21 +197,17 @@ void setup() {
         }
       }));
 
+  auto n2k_transform = new N2KTo0183Transform();
+
   // the message handler called within this consumer will write its output
   // to nmea0183_msg_observable
-  n2k_msg_input.connect_to(
-      new LambdaConsumer<tN2kMsg>([](const tN2kMsg &n2k_msg) {
-        n2k_data_to_nmea0183->HandleMsg(n2k_msg);
-      }));
+  n2k_msg_input.connect_to(n2k_transform);
 
   // send the generated NMEA 0183 message
-  nmea0183_msg_observable.connect_to(
-      new LambdaConsumer<tNMEA0183Msg>([](const tNMEA0183Msg &nmea0183_msg) {
-        String msg_str = GetNMEA0183MessageString(nmea0183_msg);
-        if (msg_str.length() > 0) {
-          Serial.println(msg_str);
-          SendBufToClients(msg_str.c_str());
-        }
+  n2k_transform->connect_to(
+      new LambdaConsumer<String>([](const String &msg_str) {
+        Serial.println(msg_str);
+        SendBufToClients(msg_str.c_str());
       }));
 
   auto *networking = new Networking(
@@ -254,7 +233,6 @@ void setup() {
   // Handle incoming NMEA 2000 messages
   app.onRepeat(1, []() {
     nmea2000->ParseMessages();
-    n2k_data_to_nmea0183->Update();
   });
 
   // app.onAvailable(Serial, []() {
