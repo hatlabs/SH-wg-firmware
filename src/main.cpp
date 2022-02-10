@@ -19,6 +19,7 @@
 #include "sensesp/net/http_server.h"
 #include "sensesp/net/networking.h"
 #include "sensesp/system/lambda_consumer.h"
+#include "sensesp/transforms/lambda_transform.h"
 #include "sensesp_minimal_app_builder.h"
 
 using namespace sensesp;
@@ -30,25 +31,23 @@ constexpr gpio_num_t kCanTxPin = GPIO_NUM_32;
 #define MAX_NMEA0183_MESSAGE_SIZE 100
 
 const size_t MaxClients = 10;
-bool send_nmea0183_conversion =
-    true;                  // Do we send NMEA2000 -> NMEA0183 consverion
-bool send_seasmart = true;  // Do we send NMEA2000 messages in SeaSmart format
 
 const uint16_t server_port =
     2222;  // Define the port, where served sends data. Use this e.g. on OpenCPN
 
 // Set the information for other bus devices, which messages we support
 const unsigned long transmit_messages[] PROGMEM = {0};
-const unsigned long receive_messages[] PROGMEM = {/*126992L,*/  // System time
-                                                 127250L,      // Heading
-                                                 127258L,  // Magnetic variation
-                                                 128259UL,  // Boat speed
-                                                 128267UL,  // Depth
-                                                 129025UL,  // Position
-                                                 129026L,   // COG and SOG
-                                                 129029L,   // GNSS
-                                                 130306L,   // Wind
-                                                 0};
+const unsigned long receive_messages[] PROGMEM = {
+    /*126992L,*/  // System time
+    127250L,      // Heading
+    127258L,      // Magnetic variation
+    128259UL,     // Boat speed
+    128267UL,     // Depth
+    129025UL,     // Position
+    129026L,      // COG and SOG
+    129029L,      // GNSS
+    130306L,      // Wind
+    0};
 
 using WiFiClientPtr = std::shared_ptr<WiFiClient>;
 std::list<WiFiClientPtr> clients;
@@ -108,8 +107,6 @@ void SendBufToClients(const char *buf) {
 
 // NMEA 2000 message handler
 void HandleNMEA2000Msg(const tN2kMsg &n2k_msg) {
-  if (!send_seasmart) return;
-
   char buf[MAX_NMEA2000_MESSAGE_SEASMART_SIZE];
   if (N2kToSeasmart(n2k_msg, millis(), buf,
                     MAX_NMEA2000_MESSAGE_SEASMART_SIZE) == 0)
@@ -118,14 +115,25 @@ void HandleNMEA2000Msg(const tN2kMsg &n2k_msg) {
   SendBufToClients(buf);
 }
 
-void SendNMEA0183Message(const tNMEA0183Msg &nmea0183_msg) {
-  if (!send_nmea0183_conversion) return;
-
-  char buf[MAX_NMEA0183_MESSAGE_SIZE];
-  if (!nmea0183_msg.GetMessage(buf, MAX_NMEA0183_MESSAGE_SIZE)) return;
-  Serial.println(buf);
-  SendBufToClients(buf);
+String GetSeaSmartString(const tN2kMsg &n2k_msg) {
+  char buf[MAX_NMEA2000_MESSAGE_SEASMART_SIZE];
+  if (N2kToSeasmart(n2k_msg, millis(), buf,
+                    MAX_NMEA2000_MESSAGE_SEASMART_SIZE) == 0) {
+    return "";
+  } else {
+    return String(buf);
+  }
 }
+
+String GetNMEA0183MessageString(const tNMEA0183Msg &nmea0183_msg) {
+  char buf[MAX_NMEA0183_MESSAGE_SIZE];
+  if (!nmea0183_msg.GetMessage(buf, MAX_NMEA0183_MESSAGE_SIZE)) {
+    return "";
+  }
+  return String(buf);
+}
+
+ObservableValue<tN2kMsg> n2k_msg_input;
 
 void InitNMEA2000() {
   nmea2000->SetN2kCANMsgBufSize(8);
@@ -135,12 +143,12 @@ void InitNMEA2000() {
   // nmea2000->EnableForward(false);                 // Disable all msg
   // forwarding to USB (=Serial)
 
-  char SnoStr[33];
-  uint32_t SerialNumber = GetBoardSerialNumber();
-  snprintf(SnoStr, 32, "%lu", (long unsigned int)SerialNumber);
+  char serial_number_str[33];
+  uint32_t serial_number = GetBoardSerialNumber();
+  snprintf(serial_number_str, 32, "%lu", (long unsigned int)serial_number);
 
   nmea2000->SetProductInformation(
-      SnoStr,                  // Manufacturer's Model serial code
+      serial_number_str,       // Manufacturer's Model serial code
       130,                     // Manufacturer's product code
       "N2k->NMEA0183 WiFi",    // Manufacturer's Model ID
       "1.0.0.1 (2018-04-08)",  // Manufacturer's Software version code
@@ -148,8 +156,8 @@ void InitNMEA2000() {
   );
   // Det device information
   nmea2000->SetDeviceInformation(
-      SerialNumber,  // Unique number. Use e.g. Serial number.
-      130,           // Device function=PC Gateway. See codes on
+      serial_number,  // Unique number. Use e.g. Serial number.
+      130,            // Device function=PC Gateway. See codes on
             // http://www.nmea.org/Assets/20120726%20nmea%202000%20class%20%26%20function%20codes%20v%202.00.pdf
       25,  // Device class=Inter/Intranetwork Device. See codes on
            // http://www.nmea.org/Assets/20120726%20nmea%202000%20class%20%26%20function%20codes%20v%202.00.pdf
@@ -165,15 +173,13 @@ void InitNMEA2000() {
 
   nmea2000->ExtendTransmitMessages(transmit_messages);
   nmea2000->ExtendReceiveMessages(receive_messages);
-  nmea2000->AttachMsgHandler(
-      n2k_data_to_nmea0183);  // NMEA 2000 -> NMEA 0183 conversion
   nmea2000->SetMsgHandler(
-      HandleNMEA2000Msg);  // Also send all NMEA2000 messages in SeaSmart format
-
-  n2k_data_to_nmea0183->SetSendNMEA0183MessageCallback(SendNMEA0183Message);
+      [](const tN2kMsg &n2k_msg) { n2k_msg_input.set(n2k_msg); });
 
   nmea2000->Open();
 }
+
+ObservableValue<tNMEA0183Msg> nmea0183_msg_observable;
 
 // The setup function performs one-time application initialization.
 void setup() {
@@ -189,9 +195,41 @@ void setup() {
   nmea2000 = new tNMEA2000_esp32(kCanTxPin, kCanRxPin);
   n2k_data_to_nmea0183 = new tN2kDataToNMEA0183(nmea2000, 0);
 
+  n2k_data_to_nmea0183->SetSendNMEA0183MessageCallback(
+      [](const tNMEA0183Msg &nmea0183_msg) {
+        nmea0183_msg_observable.set(nmea0183_msg);
+      });
+
   debugD("Initializing NMEA2000...");
 
   InitNMEA2000();
+
+  // send the NMEA 2000 message in SeaSmart format
+  n2k_msg_input.connect_to(
+      new LambdaConsumer<tN2kMsg>([](const tN2kMsg &n2k_msg) {
+        String msg = GetSeaSmartString(n2k_msg);
+        if (msg.length() > 0) {
+          Serial.println(msg);
+          SendBufToClients(msg.c_str());
+        }
+      }));
+
+  // the message handler called within this consumer will write its output
+  // to nmea0183_msg_observable
+  n2k_msg_input.connect_to(
+      new LambdaConsumer<tN2kMsg>([](const tN2kMsg &n2k_msg) {
+        n2k_data_to_nmea0183->HandleMsg(n2k_msg);
+      }));
+
+  // send the generated NMEA 0183 message
+  nmea0183_msg_observable.connect_to(
+      new LambdaConsumer<tNMEA0183Msg>([](const tNMEA0183Msg &nmea0183_msg) {
+        String msg_str = GetNMEA0183MessageString(nmea0183_msg);
+        if (msg_str.length() > 0) {
+          Serial.println(msg_str);
+          SendBufToClients(msg_str.c_str());
+        }
+      }));
 
   auto *networking = new Networking(
       "/system/net", "", "", SensESPBaseApp::get_hostname(), "thisisfine");
