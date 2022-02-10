@@ -26,17 +26,20 @@ using namespace sensesp;
 constexpr gpio_num_t kCanRxPin = GPIO_NUM_34;
 constexpr gpio_num_t kCanTxPin = GPIO_NUM_32;
 
-const size_t MaxClients = 10;
-bool SendNMEA0183Conversion =
-    true;                  // Do we send NMEA2000 -> NMEA0183 consverion
-bool SendSeaSmart = true;  // Do we send NMEA2000 messages in SeaSmart format
+#define MAX_NMEA2000_MESSAGE_SEASMART_SIZE 500
+#define MAX_NMEA0183_MESSAGE_SIZE 100
 
-const uint16_t ServerPort =
+const size_t MaxClients = 10;
+bool send_nmea0183_conversion =
+    true;                  // Do we send NMEA2000 -> NMEA0183 consverion
+bool send_seasmart = true;  // Do we send NMEA2000 messages in SeaSmart format
+
+const uint16_t server_port =
     2222;  // Define the port, where served sends data. Use this e.g. on OpenCPN
 
 // Set the information for other bus devices, which messages we support
-const unsigned long TransmitMessages[] PROGMEM = {0};
-const unsigned long ReceiveMessages[] PROGMEM = {/*126992L,*/  // System time
+const unsigned long transmit_messages[] PROGMEM = {0};
+const unsigned long receive_messages[] PROGMEM = {/*126992L,*/  // System time
                                                  127250L,      // Heading
                                                  127258L,  // Magnetic variation
                                                  128259UL,  // Boat speed
@@ -47,13 +50,13 @@ const unsigned long ReceiveMessages[] PROGMEM = {/*126992L,*/  // System time
                                                  130306L,   // Wind
                                                  0};
 
-using tWiFiClientPtr = std::shared_ptr<WiFiClient>;
-std::list<tWiFiClientPtr> clients;
+using WiFiClientPtr = std::shared_ptr<WiFiClient>;
+std::list<WiFiClientPtr> clients;
 
 tNMEA2000 *nmea2000;
 tN2kDataToNMEA0183 *n2k_data_to_nmea0183;
 
-WiFiServer server(ServerPort, MaxClients);
+WiFiServer server(server_port, MaxClients);
 
 reactesp::ReactESP app;
 
@@ -63,20 +66,17 @@ uint32_t GetBoardSerialNumber() {
   return chipid[0] + (chipid[1] << 8) + (chipid[2] << 16) + (chipid[3] << 24);
 }
 
-//*****************************************************************************
 void AddClient(WiFiClient &client) {
-  Serial.println("New Client.");
+  debugD("Registering a new client connection");
   clients.push_back(WiFiClientPtr(new WiFiClient(client)));
 }
 
-//*****************************************************************************
-void StopClient(std::list<tWiFiClientPtr>::iterator &it) {
-  Serial.println("Client Disconnected.");
+void StopClient(std::list<WiFiClientPtr>::iterator &it) {
+  debugD("Client disconnected");
   (*it)->stop();
   it = clients.erase(it);
 }
 
-//*****************************************************************************
 void CheckConnections() {
   WiFiClient client = server.available();  // listen for incoming clients
 
@@ -98,7 +98,6 @@ void CheckConnections() {
   }
 }
 
-//*****************************************************************************
 void SendBufToClients(const char *buf) {
   for (auto it = clients.begin(); it != clients.end(); it++) {
     if ((*it) != NULL && (*it)->connected()) {
@@ -107,32 +106,27 @@ void SendBufToClients(const char *buf) {
   }
 }
 
-#define MAX_NMEA2000_MESSAGE_SEASMART_SIZE 500
-//*****************************************************************************
 // NMEA 2000 message handler
-void HandleNMEA2000Msg(const tN2kMsg &N2kMsg) {
-  if (!SendSeaSmart) return;
+void HandleNMEA2000Msg(const tN2kMsg &n2k_msg) {
+  if (!send_seasmart) return;
 
   char buf[MAX_NMEA2000_MESSAGE_SEASMART_SIZE];
-  if (N2kToSeasmart(N2kMsg, millis(), buf,
+  if (N2kToSeasmart(n2k_msg, millis(), buf,
                     MAX_NMEA2000_MESSAGE_SEASMART_SIZE) == 0)
     return;
   Serial.println(buf);
   SendBufToClients(buf);
 }
 
-#define MAX_NMEA0183_MESSAGE_SIZE 100
-//*****************************************************************************
-void SendNMEA0183Message(const tNMEA0183Msg &NMEA0183Msg) {
-  if (!SendNMEA0183Conversion) return;
+void SendNMEA0183Message(const tNMEA0183Msg &nmea0183_msg) {
+  if (!send_nmea0183_conversion) return;
 
   char buf[MAX_NMEA0183_MESSAGE_SIZE];
-  if (!NMEA0183Msg.GetMessage(buf, MAX_NMEA0183_MESSAGE_SIZE)) return;
+  if (!nmea0183_msg.GetMessage(buf, MAX_NMEA0183_MESSAGE_SIZE)) return;
   Serial.println(buf);
   SendBufToClients(buf);
 }
 
-//*****************************************************************************
 void InitNMEA2000() {
   nmea2000->SetN2kCANMsgBufSize(8);
   nmea2000->SetN2kCANReceiveFrameBufSize(100);
@@ -169,8 +163,8 @@ void InitNMEA2000() {
   nmea2000->SetMode(tNMEA2000::N2km_ListenAndNode, 32);
   // nmea2000->EnableForward(false);
 
-  nmea2000->ExtendTransmitMessages(TransmitMessages);
-  nmea2000->ExtendReceiveMessages(ReceiveMessages);
+  nmea2000->ExtendTransmitMessages(transmit_messages);
+  nmea2000->ExtendReceiveMessages(receive_messages);
   nmea2000->AttachMsgHandler(
       n2k_data_to_nmea0183);  // NMEA 2000 -> NMEA 0183 conversion
   nmea2000->SetMsgHandler(
