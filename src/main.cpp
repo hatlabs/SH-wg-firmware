@@ -9,6 +9,7 @@
 // for external hardware libraries.
 
 #include <WiFi.h>
+#include <sys/time.h>
 
 #include <list>
 #include <memory>
@@ -17,6 +18,7 @@
 #include "NMEA2000/NMEA2000_esp32_framehandler.h"
 #include "NMEA2000_CAN.h"
 #include "Seasmart.h"
+#include "can_frame.h"
 #include "elapsedMillis.h"
 #include "n2k_nmea0183_transform.h"
 #include "sensesp/net/http_server.h"
@@ -24,7 +26,9 @@
 #include "sensesp/system/lambda_consumer.h"
 #include "sensesp/transforms/lambda_transform.h"
 #include "sensesp_minimal_app_builder.h"
-#include "time.h"
+#include "time_string.h"
+#include "ydwg_raw.h"
+#include "streaming_tcp_server.h"
 
 using namespace sensesp;
 
@@ -32,16 +36,14 @@ constexpr gpio_num_t kCanRxPin = GPIO_NUM_34;
 constexpr gpio_num_t kCanTxPin = GPIO_NUM_32;
 
 #define MAX_NMEA2000_MESSAGE_SEASMART_SIZE 500
-#define MAX_NMEA0183_MESSAGE_SIZE 100
+#define MAX_NMEA0183_MESSAGE_SIZE 200
 
-const size_t MaxClients = 10;
-
-const uint16_t server_port =
-    2222;  // Define the port, where served sends data. Use this e.g. on OpenCPN
+constexpr uint16_t kSeasmartServerPort = 2222;
+constexpr uint16_t kYdwgRawServerPort = 2223;
 
 // Set the information for other bus devices, which messages we support
-const unsigned long transmit_messages[] PROGMEM = {0};
-const unsigned long receive_messages[] PROGMEM = {
+const unsigned long kTransmitMessages[] PROGMEM = {0};
+const unsigned long ReceiveMessages[] PROGMEM = {
     /*126992L,*/  // System time
     127250L,      // Heading
     127258L,      // Magnetic variation
@@ -53,12 +55,10 @@ const unsigned long receive_messages[] PROGMEM = {
     130306L,      // Wind
     0};
 
-using WiFiClientPtr = std::shared_ptr<WiFiClient>;
-std::list<WiFiClientPtr> clients;
-
 tNMEA2000_esp32_FH *nmea2000;
 
-WiFiServer server(server_port, MaxClients);
+StreamingTCPServer* seasmart_server;
+StreamingTCPServer* ydwg_raw_server;
 
 // update the system time every hour
 constexpr unsigned long kTimeUpdatePeriodMs = 3600 * 1000;
@@ -73,46 +73,6 @@ uint32_t GetBoardSerialNumber() {
   return chipid[0] + (chipid[1] << 8) + (chipid[2] << 16) + (chipid[3] << 24);
 }
 
-void AddClient(WiFiClient &client) {
-  debugD("Registering a new client connection");
-  clients.push_back(WiFiClientPtr(new WiFiClient(client)));
-}
-
-void StopClient(std::list<WiFiClientPtr>::iterator &it) {
-  debugD("Client disconnected");
-  (*it)->stop();
-  it = clients.erase(it);
-}
-
-void CheckConnections() {
-  WiFiClient client = server.available();  // listen for incoming clients
-
-  if (client) AddClient(client);
-
-  for (auto it = clients.begin(); it != clients.end(); it++) {
-    if ((*it) != NULL) {
-      if (!(*it)->connected()) {
-        StopClient(it);
-      } else {
-        if ((*it)->available()) {
-          char c = (*it)->read();
-          if (c == 0x03) StopClient(it);  // Close connection by ctrl-c
-        }
-      }
-    } else {
-      it = clients.erase(it);  // Should have been erased by StopClient
-    }
-  }
-}
-
-void SendBufToClients(const char *buf) {
-  for (auto it = clients.begin(); it != clients.end(); it++) {
-    if ((*it) != NULL && (*it)->connected()) {
-      (*it)->println(buf);
-    }
-  }
-}
-
 // Set system time if the correct PGN is received
 void SetSystemTime(const tN2kMsg &n2k_msg) {
   unsigned char SID;
@@ -125,8 +85,6 @@ void SetSystemTime(const tN2kMsg &n2k_msg) {
   // If the received PGN 8s 126992 (System Time) and startup time is 0,
   // set the startup time to the received time.
   if (n2k_msg.PGN == 126992) {
-    debugD("Received System Time PGN");
-
     if (elapsed_since_last_system_time_update > kTimeUpdatePeriodMs) {
       debugD("Updating system time");
       if (ParseN2kSystemTime(n2k_msg, SID, n2k_system_date, n2k_system_time,
@@ -137,50 +95,11 @@ void SetSystemTime(const tN2kMsg &n2k_msg) {
         tv.tv_usec = 1e6 * (system_timestamp - tv.tv_sec);
         settimeofday(&tv, NULL);
 
-        debugD("Set system time to %ld", tv.tv_sec);
+        String time_str = GetUTCTimeString(tv);
+        debugI("Set system time to %s", time_str.c_str());
         elapsed_since_last_system_time_update = 0;
       }
     }
-  }
-}
-
-const String GetSystemUTCTime() {
-  const int kMaxOutputSize = 80;
-  char outbuf[kMaxOutputSize];
-  struct timeval tv_now;
-  struct tm tm_time;
-
-  // get current time as a timestamp
-  gettimeofday(&tv_now, NULL);
-  // convert the timestamp into a time struct
-  gmtime_r(&tv_now.tv_sec, &tm_time);
-
-  // output the time as a formatted string
-  snprintf(outbuf, kMaxOutputSize, "%02d:%02d:%02d.%03ld ", tm_time.tm_hour,
-           tm_time.tm_min, tm_time.tm_sec, tv_now.tv_usec / 1000);
-
-  return String(outbuf);
-}
-
-void HandleCANFrame(bool &has_frame, unsigned long &can_id, unsigned char &len,
-                    unsigned char *buf) {
-  const int kMaxOutputSize = 80;
-  char outbuf[kMaxOutputSize];
-
-  if (has_frame) {
-    String output = "CAN: ";
-
-    output += GetSystemUTCTime();
-
-    // append can_id in hex to output
-    snprintf(outbuf, kMaxOutputSize, "%08X ", can_id);
-    output += outbuf;
-    // append buf to output as hex bytes
-    for (int i = 0; i < len; i++) {
-      snprintf(outbuf, kMaxOutputSize, "%02X ", buf[i]);
-      output += outbuf;
-    }
-    debugD("%s", output.c_str());
   }
 }
 
@@ -190,11 +109,24 @@ String GetSeaSmartString(const tN2kMsg &n2k_msg) {
                     MAX_NMEA2000_MESSAGE_SEASMART_SIZE) == 0) {
     return "";
   } else {
-    return String(buf);
+    return String(buf) + "\r\n";
   }
 }
 
 ObservableValue<tN2kMsg> n2k_msg_input;
+ObservableValue<CANFrame> can_frame_input;
+
+class SeasmartTransform : public Transform<tN2kMsg, String> {
+ public:
+  SeasmartTransform() : Transform<tN2kMsg, String>() {}
+
+  void set_input(tN2kMsg input, uint8_t input_channel = 0) override {
+    String seasmart_str = GetSeaSmartString(input);
+    if (seasmart_str.length() > 0) {
+      this->emit(seasmart_str);
+    }
+  }
+};
 
 void InitNMEA2000() {
   nmea2000->SetN2kCANMsgBufSize(8);
@@ -232,9 +164,20 @@ void InitNMEA2000() {
   nmea2000->SetMode(tNMEA2000::N2km_ListenAndNode, 32);
   // nmea2000->EnableForward(false);
 
-  nmea2000->ExtendTransmitMessages(transmit_messages);
-  nmea2000->ExtendReceiveMessages(receive_messages);
-  nmea2000->SetCANFrameHandler(HandleCANFrame);
+  nmea2000->ExtendTransmitMessages(kTransmitMessages);
+  nmea2000->ExtendReceiveMessages(ReceiveMessages);
+
+
+  nmea2000->SetCANFrameHandler([](bool &has_frame, unsigned long &can_id,
+                                  unsigned char &len, unsigned char *buf) {
+    struct CANFrame frame;
+    if (has_frame) {
+      frame.id = can_id;
+      frame.len = len;
+      memcpy(frame.buf, buf, len);
+      can_frame_input.set(frame);
+    }
+  });
   nmea2000->SetMsgHandler(
       [](const tN2kMsg &n2k_msg) { n2k_msg_input.set(n2k_msg); });
 
@@ -258,52 +201,37 @@ void setup() {
 
   InitNMEA2000();
 
+  //// connect the CAN frame input to YDWG_RAW output
+  //can_frame_input.connect_to(new LambdaConsumer<CANFrame>([](CANFrame frame) {
+  //  struct timeval tv;
+  //  gettimeofday(&tv, NULL);
+//
+  //  String raw_string = CANFrameToYDWGRaw(frame, tv);
+  //  SendStringToYdwgRawClients(raw_string);
+  //}));
+
   // set the system time whenever PGN 126992 is received
   n2k_msg_input.connect_to(new LambdaConsumer<tN2kMsg>(
       [](const tN2kMsg &n2k_msg) { SetSystemTime(n2k_msg); }));
 
-  // send the NMEA 2000 message in SeaSmart format
-  n2k_msg_input.connect_to(
-      new LambdaConsumer<tN2kMsg>([](const tN2kMsg &n2k_msg) {
-        String msg = GetSeaSmartString(n2k_msg);
-        if (msg.length() > 0) {
-          // Serial.println(msg);
-          SendBufToClients(msg.c_str());
-        }
-      }));
-
-  auto n2k_transform = new N2KTo0183Transform();
-
+  auto n2k_to_0183_transform = new N2KTo0183Transform();
+  auto n2k_to_seasmart_transform = new SeasmartTransform();
   // the message handler called within this consumer will write its output
   // to nmea0183_msg_observable
-  n2k_msg_input.connect_to(n2k_transform);
-
-  // send the generated NMEA 0183 message
-  n2k_transform->connect_to(
-      new LambdaConsumer<String>([](const String &msg_str) {
-        // Serial.println(msg_str);
-        SendBufToClients(msg_str.c_str());
-      }));
+  n2k_msg_input.connect_to(n2k_to_0183_transform);
+  n2k_msg_input.connect_to(n2k_to_seasmart_transform);
 
   auto *networking = new Networking(
       "/system/net", "", "", SensESPBaseApp::get_hostname(), "thisisfine");
   auto *http_server = new HTTPServer();
 
-  // Here, we'll do a trick. WiFiServer needs to be instantiated after the
-  // network is initialized, but that happens asynchronously after the app
-  // starts. We'll create a Lambda consumer to listen to the network status
-  // messages and then create the WiFiServer when the network is ready.
+  seasmart_server = new StreamingTCPServer(kSeasmartServerPort, networking);
 
-  networking->connect_to(new LambdaConsumer<WifiState>([](WifiState state) {
-    if (state == WifiState::kWifiConnectedToAP) {
-      debugD("Initializing WiFi server...");
-      // FIXME: What happens if the WiFi state is temporarily disconnected?
-      server.begin();
-    }
-  }));
+  // send the generated NMEA 0183 message
+  n2k_to_0183_transform->connect_to(seasmart_server);
 
-  // Handle incoming connections
-  app.onRepeat(1, []() { CheckConnections(); });
+  // send the generated SeaSmart message
+  n2k_to_seasmart_transform->connect_to(seasmart_server);
 
   // Handle incoming NMEA 2000 messages
   app.onRepeat(1, []() { nmea2000->ParseMessages(); });
