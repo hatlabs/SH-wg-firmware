@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SH_WG_FIRMWARE_N2K_NMEA0183_TRANSFORM_H_
+#define SH_WG_FIRMWARE_N2K_NMEA0183_TRANSFORM_H_
 
 #include <NMEA0183.h>
 #include <NMEA2000.h>
@@ -66,3 +67,5 @@ class N2KTo0183Transform : public Transform<tN2kMsg, String> {
 
   void emit_0183_string(const tNMEA0183Msg& msg);
 };
+
+#endif  // SH_WG_FIRMWARE_N2K_NMEA0183_TRANSFORM_H_
