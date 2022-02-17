@@ -38,8 +38,8 @@ constexpr gpio_num_t kCanTxPin = GPIO_NUM_32;
 #define MAX_NMEA2000_MESSAGE_SEASMART_SIZE 500
 #define MAX_NMEA0183_MESSAGE_SIZE 200
 
-constexpr uint16_t kSeasmartServerPort = 2222;
-constexpr uint16_t kYdwgRawServerPort = 2223;
+constexpr uint16_t kSeasmartTCPServerPort = 2222;
+constexpr uint16_t kYdwgRawTCPServerPort = 2223;
 
 // Set the information for other bus devices, which messages we support
 const unsigned long kTransmitMessages[] PROGMEM = {0};
@@ -57,8 +57,8 @@ const unsigned long ReceiveMessages[] PROGMEM = {
 
 tNMEA2000_esp32_FH *nmea2000;
 
-StreamingTCPServer *seasmart_server;
-StreamingTCPServer *ydwg_raw_server;
+StreamingTCPServer *seasmart_tcp_server;
+StreamingTCPServer *ydwg_raw_tcp_server;
 
 // update the system time every hour
 constexpr unsigned long kTimeUpdatePeriodMs = 3600 * 1000;
@@ -223,17 +223,20 @@ void setup() {
       "/system/net", "", "", SensESPBaseApp::get_hostname(), "thisisfine");
   auto *http_server = new HTTPServer();
 
-  seasmart_server = new StreamingTCPServer(kSeasmartServerPort, networking);
-  ydwg_raw_server = new StreamingTCPServer(kYdwgRawServerPort, networking);
+  seasmart_tcp_server =
+      new StreamingTCPServer(kSeasmartTCPServerPort, networking);
+  ydwg_raw_tcp_server =
+      new StreamingTCPServer(kYdwgRawTCPServerPort, networking);
 
   // send the generated NMEA 0183 message
-  n2k_to_0183_transform->connect_to(seasmart_server);
+  n2k_to_0183_transform->connect_to(seasmart_tcp_server);
 
   // send the generated SeaSmart message
-  n2k_to_seasmart_transform->connect_to(seasmart_server);
+  n2k_to_seasmart_transform->connect_to(seasmart_tcp_server);
 
   // connect the CAN frame input to the YDWG raw transform
-  can_frame_input.connect_to(ydwg_raw_transform)->connect_to(ydwg_raw_server);
+  can_frame_input.connect_to(ydwg_raw_transform)
+      ->connect_to(ydwg_raw_tcp_server);
 
   // Handle incoming NMEA 2000 messages
   app.onRepeat(1, []() { nmea2000->ParseMessages(); });
