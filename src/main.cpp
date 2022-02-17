@@ -26,9 +26,9 @@
 #include "sensesp/system/lambda_consumer.h"
 #include "sensesp/transforms/lambda_transform.h"
 #include "sensesp_minimal_app_builder.h"
+#include "streaming_tcp_server.h"
 #include "time_string.h"
 #include "ydwg_raw.h"
-#include "streaming_tcp_server.h"
 
 using namespace sensesp;
 
@@ -57,8 +57,8 @@ const unsigned long ReceiveMessages[] PROGMEM = {
 
 tNMEA2000_esp32_FH *nmea2000;
 
-StreamingTCPServer* seasmart_server;
-StreamingTCPServer* ydwg_raw_server;
+StreamingTCPServer *seasmart_server;
+StreamingTCPServer *ydwg_raw_server;
 
 // update the system time every hour
 constexpr unsigned long kTimeUpdatePeriodMs = 3600 * 1000;
@@ -167,7 +167,6 @@ void InitNMEA2000() {
   nmea2000->ExtendTransmitMessages(kTransmitMessages);
   nmea2000->ExtendReceiveMessages(ReceiveMessages);
 
-
   nmea2000->SetCANFrameHandler([](bool &has_frame, unsigned long &can_id,
                                   unsigned char &len, unsigned char *buf) {
     struct CANFrame frame;
@@ -201,14 +200,13 @@ void setup() {
 
   InitNMEA2000();
 
-  //// connect the CAN frame input to YDWG_RAW output
-  //can_frame_input.connect_to(new LambdaConsumer<CANFrame>([](CANFrame frame) {
-  //  struct timeval tv;
-  //  gettimeofday(&tv, NULL);
-//
-  //  String raw_string = CANFrameToYDWGRaw(frame, tv);
-  //  SendStringToYdwgRawClients(raw_string);
-  //}));
+  auto ydwg_raw_transform =
+      new LambdaTransform<CANFrame, String>([](CANFrame frame) {
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        String raw_string = CANFrameToYDWGRaw(frame, tv);
+        return raw_string;
+      });
 
   // set the system time whenever PGN 126992 is received
   n2k_msg_input.connect_to(new LambdaConsumer<tN2kMsg>(
@@ -226,12 +224,16 @@ void setup() {
   auto *http_server = new HTTPServer();
 
   seasmart_server = new StreamingTCPServer(kSeasmartServerPort, networking);
+  ydwg_raw_server = new StreamingTCPServer(kYdwgRawServerPort, networking);
 
   // send the generated NMEA 0183 message
   n2k_to_0183_transform->connect_to(seasmart_server);
 
   // send the generated SeaSmart message
   n2k_to_seasmart_transform->connect_to(seasmart_server);
+
+  // connect the CAN frame input to the YDWG raw transform
+  can_frame_input.connect_to(ydwg_raw_transform)->connect_to(ydwg_raw_server);
 
   // Handle incoming NMEA 2000 messages
   app.onRepeat(1, []() { nmea2000->ParseMessages(); });
