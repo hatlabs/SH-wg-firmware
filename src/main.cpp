@@ -27,6 +27,7 @@
 #include "sensesp/transforms/lambda_transform.h"
 #include "sensesp_minimal_app_builder.h"
 #include "streaming_tcp_server.h"
+#include "streaming_udp_server.h"
 #include "time_string.h"
 #include "ydwg_raw.h"
 
@@ -40,6 +41,8 @@ constexpr gpio_num_t kCanTxPin = GPIO_NUM_32;
 
 constexpr uint16_t kSeasmartTCPServerPort = 2222;
 constexpr uint16_t kYdwgRawTCPServerPort = 2223;
+
+constexpr uint16_t kSeasmartUDPServerPort = 2000;
 
 // Set the information for other bus devices, which messages we support
 const unsigned long kTransmitMessages[] PROGMEM = {0};
@@ -59,6 +62,8 @@ tNMEA2000_esp32_FH *nmea2000;
 
 StreamingTCPServer *seasmart_tcp_server;
 StreamingTCPServer *ydwg_raw_tcp_server;
+
+StreamingUDPServer *seasmart_udp_server;
 
 // update the system time every hour
 constexpr unsigned long kTimeUpdatePeriodMs = 3600 * 1000;
@@ -228,11 +233,16 @@ void setup() {
   ydwg_raw_tcp_server =
       new StreamingTCPServer(kYdwgRawTCPServerPort, networking);
 
+  seasmart_udp_server =
+      new StreamingUDPServer(kSeasmartUDPServerPort, networking);
+
   // send the generated NMEA 0183 message
   n2k_to_0183_transform->connect_to(seasmart_tcp_server);
+  n2k_to_0183_transform->connect_to(seasmart_udp_server);
 
   // send the generated SeaSmart message
   n2k_to_seasmart_transform->connect_to(seasmart_tcp_server);
+  n2k_to_seasmart_transform->connect_to(seasmart_udp_server);
 
   // connect the CAN frame input to the YDWG raw transform
   can_frame_input.connect_to(ydwg_raw_transform)
