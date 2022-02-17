@@ -43,6 +43,7 @@ constexpr uint16_t kSeasmartTCPServerPort = 2222;
 constexpr uint16_t kYdwgRawTCPServerPort = 2223;
 
 constexpr uint16_t kSeasmartUDPServerPort = 2000;
+constexpr uint16_t kYdwgRawUDPServerPort = 2002;
 
 // Set the information for other bus devices, which messages we support
 const unsigned long kTransmitMessages[] PROGMEM = {0};
@@ -64,6 +65,7 @@ StreamingTCPServer *seasmart_tcp_server;
 StreamingTCPServer *ydwg_raw_tcp_server;
 
 StreamingUDPServer *seasmart_udp_server;
+StreamingUDPServer *ydwg_raw_udp_server;
 
 // update the system time every hour
 constexpr unsigned long kTimeUpdatePeriodMs = 3600 * 1000;
@@ -235,6 +237,8 @@ void setup() {
 
   seasmart_udp_server =
       new StreamingUDPServer(kSeasmartUDPServerPort, networking);
+  ydwg_raw_udp_server =
+      new StreamingUDPServer(kYdwgRawUDPServerPort, networking);
 
   // send the generated NMEA 0183 message
   n2k_to_0183_transform->connect_to(seasmart_tcp_server);
@@ -247,6 +251,12 @@ void setup() {
   // connect the CAN frame input to the YDWG raw transform
   can_frame_input.connect_to(ydwg_raw_transform)
       ->connect_to(ydwg_raw_tcp_server);
+
+  ydwg_raw_transform->connect_to(ydwg_raw_udp_server);
+
+  app.onRepeat(1000, []() {
+    debugD("Uptime: %lu", millis() / 1000);
+  });
 
   // Handle incoming NMEA 2000 messages
   app.onRepeat(1, []() { nmea2000->ParseMessages(); });
