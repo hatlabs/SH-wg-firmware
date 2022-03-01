@@ -205,6 +205,8 @@ void InitNMEA2000() {
   nmea2000->Open();
 }
 
+int led_state = -1;
+
 // The setup function performs one-time application initialization.
 void setup() {
 #ifndef SERIAL_DEBUG_DISABLED
@@ -214,6 +216,45 @@ void setup() {
   SensESPMinimalAppBuilder builder;
   SensESPMinimalApp *sensesp_app =
       builder.set_hostname("sensesp-wifi-gw")->get_app();
+
+  // enable CAN RX/TX LEDs
+  pinMode(kCanLedEnPin, OUTPUT);
+  digitalWrite(kCanLedEnPin, HIGH);
+
+  // enable all other LEDs
+  pinMode(kRedLedPin, OUTPUT);
+  pinMode(kBlueLedPin, OUTPUT);
+  digitalWrite(kRedLedPin, HIGH);
+  digitalWrite(kBlueLedPin, HIGH);
+
+  // app.onRepeat(500, []() {
+  //   led_state++;
+  //   switch (led_state % 3) {
+  //     case 0:
+  //       digitalWrite(kRedLedPin, LOW);
+  //       digitalWrite(kBlueLedPin, LOW);
+  //       break;
+  //     case 1:
+  //       digitalWrite(kRedLedPin, HIGH);
+  //       digitalWrite(kBlueLedPin, LOW);
+  //       break;
+  //     case 2:
+  //       digitalWrite(kRedLedPin, LOW);
+  //       digitalWrite(kBlueLedPin, HIGH);
+  //       break;
+  //     case 3:
+  //       digitalWrite(kRedLedPin, LOW);
+  //       digitalWrite(kBlueLedPin, LOW);
+  //       break;
+  //   }
+  // });
+
+  pinMode(kHallInputPin, INPUT_PULLUP);
+  pinMode(kYellowLedPin, OUTPUT);
+  digitalWrite(kYellowLedPin, HIGH);
+  app.onInterrupt(kHallInputPin, CHANGE, []() {
+    digitalWrite(kYellowLedPin, digitalRead(kHallInputPin));
+  });
 
   // Initialize the NMEA2000 library
   nmea2000 = new tNMEA2000_esp32_FH(kCanTxPin, kCanRxPin);
