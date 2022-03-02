@@ -7,9 +7,9 @@
 constexpr char const * kFirmwareName = "SH-wg/dev";
 
 /** Firmware version string*/
-constexpr char const * kFirmwareVersion = "0.2.0-alpha.2";
+constexpr char const * kFirmwareVersion = "0.3.0-alpha.0";
 
 /** Firmware version encoded in an easily sortable uint32_t value */
-constexpr uint32_t kFirmwareHexVersion = 00020002;
+constexpr uint32_t kFirmwareHexVersion = 0x00020007;
 
 #endif
