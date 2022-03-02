@@ -19,6 +19,7 @@
 #include "NMEA2000_CAN.h"
 #include "Seasmart.h"
 #include "can_frame.h"
+#include "ota_update_task.h"
 #include "elapsedMillis.h"
 #include "n2k_nmea0183_transform.h"
 #include "sensesp/net/http_server.h"
@@ -216,6 +217,9 @@ void setup() {
   SensESPMinimalAppBuilder builder;
   SensESPMinimalApp *sensesp_app =
       builder.set_hostname("sensesp-wifi-gw")->get_app();
+
+  xTaskCreate(ExecuteOTAUpdateTask, "OTAUpdateTask", 8000, NULL,
+              1, NULL);
 
   // enable CAN RX/TX LEDs
   pinMode(kCanLedEnPin, OUTPUT);
