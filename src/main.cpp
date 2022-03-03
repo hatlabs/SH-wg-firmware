@@ -19,6 +19,7 @@
 #include "NMEA2000_CAN.h"
 #include "Seasmart.h"
 #include "can_frame.h"
+#include "ota_update_task.h"
 #include "elapsedMillis.h"
 #include "n2k_nmea0183_transform.h"
 #include "sensesp/net/http_server.h"
@@ -33,8 +34,23 @@
 
 using namespace sensesp;
 
+#ifdef SH_WG
+constexpr gpio_num_t kCanRxPin = GPIO_NUM_25;
+constexpr gpio_num_t kCanTxPin = GPIO_NUM_26;
+constexpr gpio_num_t kCanLedEnPin = GPIO_NUM_27;
+constexpr gpio_num_t kBlueLedPin = GPIO_NUM_2;
+constexpr gpio_num_t kYellowLedPin = GPIO_NUM_4;
+constexpr gpio_num_t kRedLedPin = GPIO_NUM_5;
+
+constexpr gpio_num_t kHallInputPin = GPIO_NUM_18;
+#else
 constexpr gpio_num_t kCanRxPin = GPIO_NUM_34;
 constexpr gpio_num_t kCanTxPin = GPIO_NUM_32;
+constexpr gpio_num_t kCanLedEnPin = (gpio_num_t)-1;
+constexpr gpio_num_t kBlueLedPin = (gpio_num_t)-1;
+constexpr gpio_num_t kYellowLedPin = (gpio_num_t)-1;
+constexpr gpio_num_t kRedLedPin = GPIO_NUM_2;
+#endif
 
 #define MAX_NMEA2000_MESSAGE_SEASMART_SIZE 500
 #define MAX_NMEA0183_MESSAGE_SIZE 200
@@ -190,6 +206,8 @@ void InitNMEA2000() {
   nmea2000->Open();
 }
 
+int led_state = -1;
+
 // The setup function performs one-time application initialization.
 void setup() {
 #ifndef SERIAL_DEBUG_DISABLED
@@ -199,6 +217,48 @@ void setup() {
   SensESPMinimalAppBuilder builder;
   SensESPMinimalApp *sensesp_app =
       builder.set_hostname("sensesp-wifi-gw")->get_app();
+
+  xTaskCreate(ExecuteOTAUpdateTask, "OTAUpdateTask", 8000, NULL,
+              1, NULL);
+
+  // enable CAN RX/TX LEDs
+  pinMode(kCanLedEnPin, OUTPUT);
+  digitalWrite(kCanLedEnPin, HIGH);
+
+  // enable all other LEDs
+  pinMode(kRedLedPin, OUTPUT);
+  pinMode(kBlueLedPin, OUTPUT);
+  digitalWrite(kRedLedPin, HIGH);
+  digitalWrite(kBlueLedPin, HIGH);
+
+  // app.onRepeat(500, []() {
+  //   led_state++;
+  //   switch (led_state % 3) {
+  //     case 0:
+  //       digitalWrite(kRedLedPin, LOW);
+  //       digitalWrite(kBlueLedPin, LOW);
+  //       break;
+  //     case 1:
+  //       digitalWrite(kRedLedPin, HIGH);
+  //       digitalWrite(kBlueLedPin, LOW);
+  //       break;
+  //     case 2:
+  //       digitalWrite(kRedLedPin, LOW);
+  //       digitalWrite(kBlueLedPin, HIGH);
+  //       break;
+  //     case 3:
+  //       digitalWrite(kRedLedPin, LOW);
+  //       digitalWrite(kBlueLedPin, LOW);
+  //       break;
+  //   }
+  // });
+
+  pinMode(kHallInputPin, INPUT_PULLUP);
+  pinMode(kYellowLedPin, OUTPUT);
+  digitalWrite(kYellowLedPin, HIGH);
+  app.onInterrupt(kHallInputPin, CHANGE, []() {
+    digitalWrite(kYellowLedPin, digitalRead(kHallInputPin));
+  });
 
   // Initialize the NMEA2000 library
   nmea2000 = new tNMEA2000_esp32_FH(kCanTxPin, kCanRxPin);
@@ -219,11 +279,11 @@ void setup() {
   n2k_msg_input.connect_to(new LambdaConsumer<tN2kMsg>(
       [](const tN2kMsg &n2k_msg) { SetSystemTime(n2k_msg); }));
 
-  auto n2k_to_0183_transform = new N2KTo0183Transform();
+  //auto n2k_to_0183_transform = new N2KTo0183Transform();
   auto n2k_to_seasmart_transform = new SeasmartTransform();
   // the message handler called within this consumer will write its output
   // to nmea0183_msg_observable
-  n2k_msg_input.connect_to(n2k_to_0183_transform);
+  //n2k_msg_input.connect_to(n2k_to_0183_transform);
   n2k_msg_input.connect_to(n2k_to_seasmart_transform);
 
   auto *networking = new Networking(
@@ -241,8 +301,8 @@ void setup() {
       new StreamingUDPServer(kYdwgRawUDPServerPort, networking);
 
   // send the generated NMEA 0183 message
-  n2k_to_0183_transform->connect_to(seasmart_tcp_server);
-  n2k_to_0183_transform->connect_to(seasmart_udp_server);
+  //n2k_to_0183_transform->connect_to(seasmart_tcp_server);
+  //n2k_to_0183_transform->connect_to(seasmart_udp_server);
 
   // send the generated SeaSmart message
   n2k_to_seasmart_transform->connect_to(seasmart_tcp_server);
