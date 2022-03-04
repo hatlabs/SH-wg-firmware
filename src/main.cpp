@@ -14,14 +14,15 @@
 #include <list>
 #include <memory>
 
+#include "AceButton.h"
 #include "N2kMessages.h"
 #include "NMEA2000/NMEA2000_esp32_framehandler.h"
 #include "NMEA2000_CAN.h"
 #include "Seasmart.h"
 #include "can_frame.h"
-#include "ota_update_task.h"
 #include "elapsedMillis.h"
 #include "n2k_nmea0183_transform.h"
+#include "ota_update_task.h"
 #include "sensesp/net/http_server.h"
 #include "sensesp/net/networking.h"
 #include "sensesp/system/lambda_consumer.h"
@@ -32,6 +33,7 @@
 #include "time_string.h"
 #include "ydwg_raw.h"
 
+using namespace ace_button;
 using namespace sensesp;
 
 #ifdef SH_WG
@@ -89,6 +91,10 @@ constexpr unsigned long kTimeUpdatePeriodMs = 3600 * 1000;
 elapsedMillis elapsed_since_last_system_time_update = kTimeUpdatePeriodMs;
 
 reactesp::ReactESP app;
+
+SensESPMinimalApp *sensesp_app;
+
+int led_state = -1;
 
 uint32_t GetBoardSerialNumber() {
   uint8_t chipid[6];
@@ -206,7 +212,35 @@ void InitNMEA2000() {
   nmea2000->Open();
 }
 
-int led_state = -1;
+// define the button control interface
+AceButton *hall_button;
+
+void HandleButtonEvent(AceButton *button, uint8_t event_type,
+                       uint8_t button_state) {
+  digitalWrite(kRedLedPin, button_state);
+  static elapsedMillis time_since_press_event;
+
+  switch (event_type) {
+    case AceButton::kEventPressed:
+      time_since_press_event = 0;
+      break;
+    case AceButton::kEventLongReleased:
+      debugD("Long release, duration: %d", time_since_press_event);
+      if (time_since_press_event > 10000) {
+        debugD("Factory reset");
+        sensesp_app->reset();
+      } else if (time_since_press_event > 4000) {
+        debugD("Enter WPS setup");
+
+      } else if (time_since_press_event > 1000) {
+        debugD("Reset");
+        ESP.restart();
+      }
+      break;
+    default:
+      break;
+  }
+}
 
 // The setup function performs one-time application initialization.
 void setup() {
@@ -215,11 +249,9 @@ void setup() {
 #endif
 
   SensESPMinimalAppBuilder builder;
-  SensESPMinimalApp *sensesp_app =
-      builder.set_hostname("sensesp-wifi-gw")->get_app();
+  sensesp_app = builder.set_hostname("sensesp-wifi-gw")->get_app();
 
-  xTaskCreate(ExecuteOTAUpdateTask, "OTAUpdateTask", 8000, NULL,
-              1, NULL);
+  xTaskCreate(ExecuteOTAUpdateTask, "OTAUpdateTask", 8000, NULL, 1, NULL);
 
   // enable CAN RX/TX LEDs
   pinMode(kCanLedEnPin, OUTPUT);
@@ -228,8 +260,21 @@ void setup() {
   // enable all other LEDs
   pinMode(kRedLedPin, OUTPUT);
   pinMode(kBlueLedPin, OUTPUT);
+  pinMode(kYellowLedPin, OUTPUT);
   digitalWrite(kRedLedPin, HIGH);
   digitalWrite(kBlueLedPin, HIGH);
+  digitalWrite(kYellowLedPin, HIGH);
+
+  hall_button = new AceButton(kHallInputPin);
+  pinMode(kHallInputPin, INPUT_PULLUP);
+  hall_button->setEventHandler(HandleButtonEvent);
+
+  // enable long press events
+  ButtonConfig *button_config = hall_button->getButtonConfig();
+  button_config->setFeature(ButtonConfig::kFeatureLongPress);
+  button_config->setFeature(ButtonConfig::kFeatureSuppressAfterLongPress);
+
+  app.onRepeat(4, []() { hall_button->check(); });
 
   // app.onRepeat(500, []() {
   //   led_state++;
@@ -253,13 +298,6 @@ void setup() {
   //   }
   // });
 
-  pinMode(kHallInputPin, INPUT_PULLUP);
-  pinMode(kYellowLedPin, OUTPUT);
-  digitalWrite(kYellowLedPin, HIGH);
-  app.onInterrupt(kHallInputPin, CHANGE, []() {
-    digitalWrite(kYellowLedPin, digitalRead(kHallInputPin));
-  });
-
   // Initialize the NMEA2000 library
   nmea2000 = new tNMEA2000_esp32_FH(kCanTxPin, kCanRxPin);
 
@@ -279,11 +317,11 @@ void setup() {
   n2k_msg_input.connect_to(new LambdaConsumer<tN2kMsg>(
       [](const tN2kMsg &n2k_msg) { SetSystemTime(n2k_msg); }));
 
-  //auto n2k_to_0183_transform = new N2KTo0183Transform();
+  // auto n2k_to_0183_transform = new N2KTo0183Transform();
   auto n2k_to_seasmart_transform = new SeasmartTransform();
   // the message handler called within this consumer will write its output
   // to nmea0183_msg_observable
-  //n2k_msg_input.connect_to(n2k_to_0183_transform);
+  // n2k_msg_input.connect_to(n2k_to_0183_transform);
   n2k_msg_input.connect_to(n2k_to_seasmart_transform);
 
   auto *networking = new Networking(
@@ -301,8 +339,8 @@ void setup() {
       new StreamingUDPServer(kYdwgRawUDPServerPort, networking);
 
   // send the generated NMEA 0183 message
-  //n2k_to_0183_transform->connect_to(seasmart_tcp_server);
-  //n2k_to_0183_transform->connect_to(seasmart_udp_server);
+  // n2k_to_0183_transform->connect_to(seasmart_tcp_server);
+  // n2k_to_0183_transform->connect_to(seasmart_udp_server);
 
   // send the generated SeaSmart message
   n2k_to_seasmart_transform->connect_to(seasmart_tcp_server);
@@ -314,9 +352,7 @@ void setup() {
 
   ydwg_raw_transform->connect_to(ydwg_raw_udp_server);
 
-  app.onRepeat(1000, []() {
-    debugD("Uptime: %lu", millis() / 1000);
-  });
+  app.onRepeat(1000, []() { debugD("Uptime: %lu", millis() / 1000); });
 
   // Handle incoming NMEA 2000 messages
   app.onRepeat(1, []() { nmea2000->ParseMessages(); });
