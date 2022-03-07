@@ -9,6 +9,7 @@
 
 #include "sensesp/net/networking.h"
 #include "sensesp/system/valueconsumer.h"
+#include "sensesp/system/lambda_consumer.h"
 
 using namespace sensesp;
 
@@ -75,8 +76,12 @@ class StreamingTCPServer : public ValueConsumer<String>, public Startable {
   }
 
   void start() override {
-    debugI("Starting Streaming TCP server on port %d", port_);
-    server_->begin();
+    networking_->connect_to(new LambdaConsumer<WifiState>([this](WifiState state) {
+      if (state == WifiState::kWifiConnectedToAP) {
+        debugI("Starting Streaming TCP server on port %d", port_);
+        server_->begin();
+      }
+    }));
   }
 };
 
