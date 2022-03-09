@@ -229,9 +229,6 @@ void HandleButtonEvent(AceButton *button, uint8_t event_type,
       if (time_since_press_event > 10000) {
         debugD("Factory reset");
         sensesp_app->reset();
-      } else if (time_since_press_event > 4000) {
-        debugD("Enter WPS setup");
-
       } else if (time_since_press_event > 1000) {
         debugD("Reset");
         ESP.restart();
