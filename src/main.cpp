@@ -94,6 +94,8 @@ reactesp::ReactESP app;
 
 SensESPMinimalApp *sensesp_app;
 
+Networking *networking;
+
 int led_state = -1;
 
 uint32_t GetBoardSerialNumber() {
@@ -245,8 +247,18 @@ void setup() {
   SetupSerialDebug(115200);
 #endif
 
+  // Create a unique hostname for the device.
+
+  uint8_t mac[6];
+  WiFi.macAddress(mac);
+  String mac_str = String(mac[0], HEX) + String(mac[1], HEX) +
+                   String(mac[2], HEX) + String(mac[3], HEX) +
+                   String(mac[4], HEX) + String(mac[5], HEX);
+
+  String unique_hostname = String("sh-wg-") + mac_str;
+
   SensESPMinimalAppBuilder builder;
-  sensesp_app = builder.set_hostname("sensesp-wifi-gw")->get_app();
+  sensesp_app = builder.set_hostname(unique_hostname)->get_app();
 
   xTaskCreate(ExecuteOTAUpdateTask, "OTAUpdateTask", 8000, NULL, 1, NULL);
 
