@@ -260,27 +260,6 @@ void setup() {
 
   app.onRepeat(4, []() { hall_button->check(); });
 
-  // app.onRepeat(500, []() {
-  //   led_state++;
-  //   switch (led_state % 3) {
-  //     case 0:
-  //       digitalWrite(kRedLedPin, LOW);
-  //       digitalWrite(kBlueLedPin, LOW);
-  //       break;
-  //     case 1:
-  //       digitalWrite(kRedLedPin, HIGH);
-  //       digitalWrite(kBlueLedPin, LOW);
-  //       break;
-  //     case 2:
-  //       digitalWrite(kRedLedPin, LOW);
-  //       digitalWrite(kBlueLedPin, HIGH);
-  //       break;
-  //     case 3:
-  //       digitalWrite(kRedLedPin, LOW);
-  //       digitalWrite(kBlueLedPin, LOW);
-  //       break;
-  //   }
-  // });
 
   // Initialize the NMEA2000 library
   nmea2000 = new tNMEA2000_esp32_FH(kCanTxPin, kCanRxPin);
