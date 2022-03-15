@@ -216,38 +216,8 @@ void HandleButtonEvent(AceButton *button, uint8_t event_type,
   }
 }
 
-// The setup function performs one-time application initialization.
-void setup() {
-#ifndef SERIAL_DEBUG_DISABLED
-  SetupSerialDebug(115200);
-#endif
-
-  // Create a unique hostname for the device.
-
-  uint8_t mac[6];
-  WiFi.macAddress(mac);
-  String mac_str = String(mac[0], HEX) + String(mac[1], HEX) +
-                   String(mac[2], HEX) + String(mac[3], HEX) +
-                   String(mac[4], HEX) + String(mac[5], HEX);
-
-  String unique_hostname = String("sh-wg-") + mac_str;
-
-  SensESPMinimalAppBuilder builder;
-  sensesp_app = builder.set_hostname(unique_hostname)->get_app();
-
-  xTaskCreate(ExecuteOTAUpdateTask, "OTAUpdateTask", 8000, NULL, 1, NULL);
-
-  // enable CAN RX/TX LEDs
-  pinMode(kCanLedEnPin, OUTPUT);
-  digitalWrite(kCanLedEnPin, HIGH);
-
-  // enable all other LEDs
-  pinMode(kRedLedPin, OUTPUT);
-  pinMode(kBlueLedPin, OUTPUT);
-  pinMode(kYellowLedPin, OUTPUT);
-  digitalWrite(kRedLedPin, HIGH);
-  digitalWrite(kBlueLedPin, HIGH);
-  digitalWrite(kYellowLedPin, HIGH);
+static void SetupButton() {
+  // set up the hall effect sensor button interface
 
   hall_button = new AceButton(kHallInputPin);
   pinMode(kHallInputPin, INPUT_PULLUP);
@@ -259,6 +229,7 @@ void setup() {
   button_config->setFeature(ButtonConfig::kFeatureSuppressAfterLongPress);
 
   app.onRepeat(4, []() { hall_button->check(); });
+}
 
 static void SetupBlueLEDBlinker() {
   // set up the PWM channel for the blue LED
@@ -286,15 +257,10 @@ static void SetupBlueLEDBlinker() {
         }
       });
 
-  // Initialize the NMEA2000 library
-  nmea2000 = new tNMEA2000_esp32_FH(kCanTxPin, kCanRxPin);
-
-  debugD("Initializing NMEA2000...");
-
-  InitNMEA2000();
   networking->connect_to(wifi_state_consumer);
 }
 
+static void SetupTransmitters() {
   auto ydwg_raw_transform =
       new LambdaTransform<CANFrame, String>([](CANFrame frame) {
         struct timeval tv;
@@ -303,20 +269,12 @@ static void SetupBlueLEDBlinker() {
         return raw_string;
       });
 
-  // set the system time whenever PGN 126992 is received
-  n2k_msg_input.connect_to(new LambdaConsumer<tN2kMsg>(
-      [](const tN2kMsg &n2k_msg) { SetSystemTime(n2k_msg); }));
-
   // auto n2k_to_0183_transform = new N2KTo0183Transform();
   auto n2k_to_seasmart_transform = new SeasmartTransform();
   // the message handler called within this consumer will write its output
   // to nmea0183_msg_observable
   // n2k_msg_input.connect_to(n2k_to_0183_transform);
   n2k_msg_input.connect_to(n2k_to_seasmart_transform);
-
-  auto *networking = new Networking(
-      "/system/net", "", "", SensESPBaseApp::get_hostname(), "thisisfine");
-  auto *http_server = new HTTPServer();
 
   seasmart_tcp_server =
       new StreamingTCPServer(kSeasmartTCPServerPort, networking);
@@ -341,6 +299,62 @@ static void SetupBlueLEDBlinker() {
       ->connect_to(ydwg_raw_tcp_server);
 
   ydwg_raw_transform->connect_to(ydwg_raw_udp_server);
+}
+
+// The setup function performs one-time application initialization.
+void setup() {
+#ifndef SERIAL_DEBUG_DISABLED
+  SetupSerialDebug(115200);
+#endif
+
+  // Create a unique hostname for the device.
+
+  uint8_t mac[6];
+  WiFi.macAddress(mac);
+  String mac_str = String(mac[0], HEX) + String(mac[1], HEX) +
+                   String(mac[2], HEX) + String(mac[3], HEX) +
+                   String(mac[4], HEX) + String(mac[5], HEX);
+
+  String unique_hostname = String("sh-wg-") + mac_str;
+
+  SensESPMinimalAppBuilder builder;
+  sensesp_app = builder.set_hostname(unique_hostname)->get_app();
+
+  auto *networking = new Networking(
+      "/system/net", "", "", SensESPBaseApp::get_hostname(), "thisisfine");
+
+  auto *http_server = new HTTPServer();
+
+  xTaskCreate(ExecuteOTAUpdateTask, "OTAUpdateTask", 8000, NULL, 1, NULL);
+
+  // enable CAN RX/TX LEDs
+  pinMode(kCanLedEnPin, OUTPUT);
+  digitalWrite(kCanLedEnPin, HIGH);
+
+  // enable all other LEDs
+  pinMode(kRedLedPin, OUTPUT);
+  pinMode(kBlueLedPin, OUTPUT);
+  pinMode(kYellowLedPin, OUTPUT);
+  digitalWrite(kRedLedPin, HIGH);
+  digitalWrite(kBlueLedPin, LOW);
+  digitalWrite(kYellowLedPin, HIGH);
+
+  SetupButton();
+
+  SetupBlueLEDBlinker();
+
+  // Initialize the NMEA2000 library
+  nmea2000 = new tNMEA2000_esp32_FH(kCanTxPin, kCanRxPin);
+
+  debugD("Initializing NMEA2000...");
+
+  InitNMEA2000();
+
+  // set the system time whenever PGN 126992 is received
+  n2k_msg_input.connect_to(new LambdaConsumer<tN2kMsg>(
+      [](const tN2kMsg &n2k_msg) { SetSystemTime(n2k_msg); }));
+
+  SetupTransmitters();
 
   app.onRepeat(1000, []() { debugD("Uptime: %lu", millis() / 1000); });
 
