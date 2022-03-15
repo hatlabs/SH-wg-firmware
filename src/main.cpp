@@ -27,6 +27,7 @@
 #include "sensesp/net/http_server.h"
 #include "sensesp/net/networking.h"
 #include "sensesp/system/lambda_consumer.h"
+#include "sensesp/system/led_blinker.h"
 #include "sensesp/transforms/lambda_transform.h"
 #include "sensesp_minimal_app_builder.h"
 #include "streaming_tcp_server.h"
@@ -260,6 +261,19 @@ static void SetupBlueLEDBlinker() {
   networking->connect_to(wifi_state_consumer);
 }
 
+static void SetupYellowLEDBlinker(
+    LambdaTransform<CANFrame, String> *ydwg_transform) {
+  static int solid_on_pattern[] = {1000, 0, PATTERN_END};
+  auto blinker = new PatternBlinker(kYellowLedPin, solid_on_pattern);
+
+  ydwg_transform->connect_to(
+      new LambdaConsumer<String>([blinker](const String &str) {
+        if (WiFi.isConnected()) {
+          blinker->blip(5);
+        }
+      }));
+}
+
 static void SetupTransmitters() {
   auto ydwg_raw_transform =
       new LambdaTransform<CANFrame, String>([](CANFrame frame) {
@@ -297,6 +311,8 @@ static void SetupTransmitters() {
   // connect the CAN frame input to the YDWG raw transform
   can_frame_input.connect_to(ydwg_raw_transform)
       ->connect_to(ydwg_raw_tcp_server);
+
+  SetupYellowLEDBlinker(ydwg_raw_transform);
 
   ydwg_raw_transform->connect_to(ydwg_raw_udp_server);
 }
@@ -337,7 +353,7 @@ void setup() {
   pinMode(kYellowLedPin, OUTPUT);
   digitalWrite(kRedLedPin, HIGH);
   digitalWrite(kBlueLedPin, LOW);
-  digitalWrite(kYellowLedPin, HIGH);
+  digitalWrite(kYellowLedPin, LOW);
 
   SetupButton();
 
