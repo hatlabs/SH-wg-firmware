@@ -20,6 +20,7 @@
 #include "NMEA2000_CAN.h"
 #include "Seasmart.h"
 #include "can_frame.h"
+#include "config.h"
 #include "elapsedMillis.h"
 #include "n2k_nmea0183_transform.h"
 #include "ota_update_task.h"
@@ -36,32 +37,8 @@
 using namespace ace_button;
 using namespace sensesp;
 
-#ifdef SH_WG
-constexpr gpio_num_t kCanRxPin = GPIO_NUM_25;
-constexpr gpio_num_t kCanTxPin = GPIO_NUM_26;
-constexpr gpio_num_t kCanLedEnPin = GPIO_NUM_27;
-constexpr gpio_num_t kBlueLedPin = GPIO_NUM_2;
-constexpr gpio_num_t kYellowLedPin = GPIO_NUM_4;
-constexpr gpio_num_t kRedLedPin = GPIO_NUM_5;
-
-constexpr gpio_num_t kHallInputPin = GPIO_NUM_18;
-#else
-constexpr gpio_num_t kCanRxPin = GPIO_NUM_34;
-constexpr gpio_num_t kCanTxPin = GPIO_NUM_32;
-constexpr gpio_num_t kCanLedEnPin = (gpio_num_t)-1;
-constexpr gpio_num_t kBlueLedPin = (gpio_num_t)-1;
-constexpr gpio_num_t kYellowLedPin = (gpio_num_t)-1;
-constexpr gpio_num_t kRedLedPin = GPIO_NUM_2;
-#endif
-
 #define MAX_NMEA2000_MESSAGE_SEASMART_SIZE 500
 #define MAX_NMEA0183_MESSAGE_SIZE 200
-
-constexpr uint16_t kSeasmartTCPServerPort = 2222;
-constexpr uint16_t kYdwgRawTCPServerPort = 2223;
-
-constexpr uint16_t kSeasmartUDPServerPort = 2000;
-constexpr uint16_t kYdwgRawUDPServerPort = 2002;
 
 // Set the information for other bus devices, which messages we support
 const unsigned long kTransmitMessages[] PROGMEM = {0};
@@ -85,8 +62,6 @@ StreamingTCPServer *ydwg_raw_tcp_server;
 StreamingUDPServer *seasmart_udp_server;
 StreamingUDPServer *ydwg_raw_udp_server;
 
-// update the system time every hour
-constexpr unsigned long kTimeUpdatePeriodMs = 3600 * 1000;
 // time elapsed since last system time update
 elapsedMillis elapsed_since_last_system_time_update = kTimeUpdatePeriodMs;
 
