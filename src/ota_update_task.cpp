@@ -1,19 +1,15 @@
 #include "ota_update_task.h"
 
-#include <esp_task_wdt.h>
-
 #include <HTTPClient.h>
 #include <HttpsOTAUpdate.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <esp_task_wdt.h>
 
 #include "ReactESP.h"
+#include "config.h"
 #include "firmware_info.h"
 
-/**
- * How long to wait before the next check if no firmware update was available.
- */
-static constexpr int kDelayBetweenFirmwareUpdateChecksMs = 60 * 60 * 1000;  // 1 hour
 
 /**
  * How long to wait before retrying if the server could not be reached.
@@ -21,7 +17,8 @@ static constexpr int kDelayBetweenFirmwareUpdateChecksMs = 60 * 60 * 1000;  // 1
 static constexpr int kDelayAfterFailedHTTPConnectionMs = 60 * 1000;  // 1 minute
 
 /**
- * How long to wait if the server has returned with an erroneous HTTP status code.
+ * How long to wait if the server has returned with an erroneous HTTP status
+ * code.
  */
 static constexpr int kDelayAfterHTTPErrorMs = 10 * 60 * 1000;  // 10 minutes
 
@@ -96,16 +93,27 @@ void OTAHttpEvent(HttpEvent_t* event) {
   }
 }
 
+static void BlinkRedLed() {
+  // set up PWM to blink the red LED at 4 Hz
+  ledcSetup(kRedPWMChannel, 4, 8);
+  ledcAttachPin(kRedLedPin, kRedPWMChannel);
+  ledcWrite(kRedPWMChannel, 127);  // 50% duty cycle
+}
+
+static void StopRedLedBlinking() {
+  ledcDetachPin(kRedLedPin);
+  digitalWrite(kRedLedPin, HIGH);
+}
+
 static void PerformOTAUpdate() {
   char url[128];
   String mac_address = WiFi.macAddress();
+  BlinkRedLed();
   // perform the actual update
   HttpsOTA.onHttpEvent(OTAHttpEvent);
-  snprintf(
-    url, sizeof(url),
-    "https://ota.hatlabs.fi/%s/firmware_%08x.bin?mac=%s",
-    kFirmwareName, latest_version, mac_address.c_str()
-  );
+  snprintf(url, sizeof(url),
+           "https://ota.hatlabs.fi/%s/firmware_%08x.bin?mac=%s", kFirmwareName,
+           latest_version, mac_address.c_str());
   debugI("Performing OTA update from %s", url);
   HttpsOTA.begin(url, server_ca_certificate);
   debugD("OTA update started.");
@@ -179,9 +187,13 @@ static void CheckOTAStatus() {
   static HttpsOTAStatus_t last_otastatus = HTTPS_OTA_IDLE;
   otastatus = HttpsOTA.status();
   if (otastatus == HTTPS_OTA_SUCCESS && last_otastatus != HTTPS_OTA_SUCCESS) {
-    debugI("Firmware written successfully. To apply the changes, reboot the device.");
+    debugI(
+        "Firmware written successfully. To apply the changes, reboot the "
+        "device.");
+    StopRedLedBlinking();
   } else if (otastatus == HTTPS_OTA_FAIL && last_otastatus != HTTPS_OTA_FAIL) {
     debugE("Firmware update failed.");
+    StopRedLedBlinking();
   }
   last_otastatus = otastatus;
 }
