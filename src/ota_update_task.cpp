@@ -8,12 +8,9 @@
 #include <WiFiClientSecure.h>
 
 #include "ReactESP.h"
+#include "config.h"
 #include "firmware_info.h"
 
-/**
- * How long to wait before the next check if no firmware update was available.
- */
-static constexpr int kDelayBetweenFirmwareUpdateChecksMs = 60 * 60 * 1000;  // 1 hour
 
 /**
  * How long to wait before retrying if the server could not be reached.
