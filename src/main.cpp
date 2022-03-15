@@ -260,6 +260,31 @@ void setup() {
 
   app.onRepeat(4, []() { hall_button->check(); });
 
+static void SetupBlueLEDBlinker() {
+  // set up the PWM channel for the blue LED
+  ledcSetup(kBluePWMChannel, 2, 8);
+
+  auto wifi_state_consumer =
+      new LambdaConsumer<WiFiState>([](const WiFiState state) {
+        switch (state) {
+          case WiFiState::kWifiNoAP:
+          case WiFiState::kWifiDisconnected:
+            ledcDetachPin(kBlueLedPin);
+            digitalWrite(kBlueLedPin, LOW);
+            break;
+          case WiFiState::kWifiConnectedToAP:
+            digitalWrite(kBlueLedPin, HIGH);
+            break;
+          case WiFiState::kWifiManagerActivated:
+            ledcAttachPin(kBlueLedPin, kBluePWMChannel);
+            // blink the blue LED at 2 Hz and 25% duty cycle
+            ledcWrite(kBluePWMChannel, 64);
+            break;
+          default:
+            digitalWrite(kBlueLedPin, LOW);
+            break;
+        }
+      });
 
   // Initialize the NMEA2000 library
   nmea2000 = new tNMEA2000_esp32_FH(kCanTxPin, kCanRxPin);
@@ -267,6 +292,8 @@ void setup() {
   debugD("Initializing NMEA2000...");
 
   InitNMEA2000();
+  networking->connect_to(wifi_state_consumer);
+}
 
   auto ydwg_raw_transform =
       new LambdaTransform<CANFrame, String>([](CANFrame frame) {
