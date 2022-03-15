@@ -93,9 +93,22 @@ void OTAHttpEvent(HttpEvent_t* event) {
   }
 }
 
+static void BlinkRedLed() {
+  // set up PWM to blink the red LED at 4 Hz
+  ledcSetup(kRedPWMChannel, 4, 8);
+  ledcAttachPin(kRedLedPin, kRedPWMChannel);
+  ledcWrite(kRedPWMChannel, 127);  // 50% duty cycle
+}
+
+static void StopRedLedBlinking() {
+  ledcDetachPin(kRedLedPin);
+  digitalWrite(kRedLedPin, HIGH);
+}
+
 static void PerformOTAUpdate() {
   char url[128];
   String mac_address = WiFi.macAddress();
+  BlinkRedLed();
   // perform the actual update
   HttpsOTA.onHttpEvent(OTAHttpEvent);
   snprintf(url, sizeof(url),
@@ -177,8 +190,10 @@ static void CheckOTAStatus() {
     debugI(
         "Firmware written successfully. To apply the changes, reboot the "
         "device.");
+    StopRedLedBlinking();
   } else if (otastatus == HTTPS_OTA_FAIL && last_otastatus != HTTPS_OTA_FAIL) {
     debugE("Firmware update failed.");
+    StopRedLedBlinking();
   }
   last_otastatus = otastatus;
 }
