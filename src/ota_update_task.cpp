@@ -1,11 +1,10 @@
 #include "ota_update_task.h"
 
-#include <esp_task_wdt.h>
-
 #include <HTTPClient.h>
 #include <HttpsOTAUpdate.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <esp_task_wdt.h>
 
 #include "ReactESP.h"
 #include "config.h"
@@ -18,7 +17,8 @@
 static constexpr int kDelayAfterFailedHTTPConnectionMs = 60 * 1000;  // 1 minute
 
 /**
- * How long to wait if the server has returned with an erroneous HTTP status code.
+ * How long to wait if the server has returned with an erroneous HTTP status
+ * code.
  */
 static constexpr int kDelayAfterHTTPErrorMs = 10 * 60 * 1000;  // 10 minutes
 
@@ -98,11 +98,9 @@ static void PerformOTAUpdate() {
   String mac_address = WiFi.macAddress();
   // perform the actual update
   HttpsOTA.onHttpEvent(OTAHttpEvent);
-  snprintf(
-    url, sizeof(url),
-    "https://ota.hatlabs.fi/%s/firmware_%08x.bin?mac=%s",
-    kFirmwareName, latest_version, mac_address.c_str()
-  );
+  snprintf(url, sizeof(url),
+           "https://ota.hatlabs.fi/%s/firmware_%08x.bin?mac=%s", kFirmwareName,
+           latest_version, mac_address.c_str());
   debugI("Performing OTA update from %s", url);
   HttpsOTA.begin(url, server_ca_certificate);
   debugD("OTA update started.");
@@ -176,7 +174,9 @@ static void CheckOTAStatus() {
   static HttpsOTAStatus_t last_otastatus = HTTPS_OTA_IDLE;
   otastatus = HttpsOTA.status();
   if (otastatus == HTTPS_OTA_SUCCESS && last_otastatus != HTTPS_OTA_SUCCESS) {
-    debugI("Firmware written successfully. To apply the changes, reboot the device.");
+    debugI(
+        "Firmware written successfully. To apply the changes, reboot the "
+        "device.");
   } else if (otastatus == HTTPS_OTA_FAIL && last_otastatus != HTTPS_OTA_FAIL) {
     debugE("Firmware update failed.");
   }
