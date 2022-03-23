@@ -24,7 +24,7 @@ This will build and upload the firmware and start the serial monitor.
 
 The SH-wg device includes a number of LEDs that indicate the status of the device.
 
-![SH-wg LEDs](media/led_numbers.jpg){:width="50%"}
+<img src="media/led_numbers.jpg" width="50%"/>
 
 1. Red: Power LED.
    On when the device is powered.
@@ -44,7 +44,7 @@ SH-wg is enclosed in a waterproof enclosure.
 Basic interaction such as restarting and resetting the device is nevertheless possible using a magnet.
 Slide the provided neodymium magnet against the enclosure next to the magnet sensor shown in the picture below.
 
-![SH-wg magnet sensor](media/hall_effect_sensor.jpg){:width="50%"}
+<img src="media/hall_effect_sensor.jpg" width="50%"/>
 
 When the magnet is detected, the red LED turns off.
 
@@ -62,19 +62,19 @@ The user can connect to that access point and define the WiFi configuration.
 When the configuration portal is activated, the blue LED is blinking.
 The device is visible on the computer's WiFi network listing:
 
-![WiFi network listing](media/wifi_selection.jpg){:width="50%"}
+<img src="media/wifi_selection.jpg" width="40%" />
 
 The network name is "Configure sh-wg-xxxxxxxxxxxx", the last 12 digits corresponding to the device unique identifier.
 You also need to provide a password to connect to the configuration portal. The password is "thisisfine".
 
 Once you have successfully connected to the configuration portal, you should be automatically presented with the WiFi configuration front page:
 
-![Captive portal front page](media/captive_portal_front_page.jpg){:width="70%"}
+<img src="media/captive_portal_front_page.jpg" width="70%" />
 
 Click the "Configure WiFi" button.
 You'll get a list of nearby WiFi networks.
 
-![WiFi configuration page](media/wifi_configuration.jpg){:width="70%"}
+<img src="media/wifi_configuration.jpg" width="70%" />
 
 One of them should be the boat network you want to connect to.
 Select that and enter the network password.
