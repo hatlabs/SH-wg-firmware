@@ -89,3 +89,59 @@ SH-wg will periodically check an online server for updates.
 If an update is available, it will be automatically downloaded and installed.
 Once the update is finished, the device will resume operating with the old firmware.
 Only once the device is restarted will it switch to the new firmware version.
+
+## Operation
+
+SH-wg receives NMEA 2000 packets and broadcasts them over WiFi.
+Both TCP and UDP traffic is supported, with two different data formats.
+The different data formats are described in the following sections.
+
+When implementing a client, the YDWG RAW format over UDP is recommended.
+The data encoding is generic and UDP as a transmission protocol is resilient and simple to implement.
+Due to the repetitive nature of the data stream, a low level of lost packets is not an issue for transport reliability.
+
+### YDWG RAW Format
+
+The YDWG RAW format is a data link layer raw encoding format for extended CAN frames used to transmit raw NMEA 2000 data.
+
+The format is very simple, consisting of a single CAN frame per line.
+The message consists of a timestamp, a one-letter direction of the message ("R" or "T"), the 29-bit extended CAN message identifier, and 1 to 8 message data bytes in hexadecimal format.
+
+The messages are transmitted as-is, without any filtering or interpretation.
+It is up to the recipient to detect and decode higher-level transport protocols such as the J1939 Transport Protocol (TP) or the NMEA 2000 Fast Packet Protocol (FP).
+
+An example of a few YDWG RAW messages is shown below:
+
+```text
+16:32:53.030 R 08FF0000 13 99 04 05 00 00 02 00
+16:32:53.004 R 1CFF2102 13 99 84 00 FF FF FF FF
+16:32:53.009 R 09F80101 FF FF FF 7F FF FF FF 7F
+16:32:53.012 R 15FD0602 FF FF FF FF FF FF FF FF
+```
+
+The full protocol specification is provided in [Yacht Devices YDWG-02 User Manual](https://www.yachtd.com/downloads/ydwg02.pdf), Appendix E.
+
+YDWG Raw traffic is provided over both TCP and UDP.
+SH-wg YDWG RAW server listens on port 2223.
+UDP packets are respectively broadcast on port 2002.
+
+### SeaSmart Format
+
+The SeaSmart (also known as SeaSmart.Net) format encapsulates NMEA 2000 data in NMEA 0183 sentences.
+It is a transport layer format, meaning that the CAN identifiers as well as recognized J1939 TP and NMEA 2000 Fast Packets are already decoded.
+
+An example of the SeaSmart format is shown below:
+
+```text
+$PCDIN,00FF00,03FEA696,00,1399040500000200*29
+$PCDIN,01FD06,03FEA6AF,02,FFFFFFFFFFFFFFFF*27
+$PCDIN,01FD07,03FEA6B2,02,FFFFFFFFFF7FFFFF*20
+$PCDIN,01FD08,03FEA6B5,02,570000FFFFFFFFFF*5B
+$PCDIN,01F801,03FEA67E,01,FFFFFF7FFFFFFF7F*2A
+$PCDIN,00FF00,03FEA696,00,1399040500000200*29
+```
+
+The protocol is specified in [SeaSmart.Net Protocol Specification](http://www.seasmart.net/pdf/SeaSmart_HTTP_Protocol_RevG_043012.pdf).
+
+SH-wg implements a TCP server for SeaSmart traffic on port 2222.
+SeaSmart traffic is broadcast over UDP on port 2000.
