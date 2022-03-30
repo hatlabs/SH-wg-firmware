@@ -30,6 +30,7 @@
 #include "sensesp_minimal_app_builder.h"
 #include "shwg.h"
 #include "shwg_button.h"
+#include "shwg_factory_test.h"
 #include "streaming_tcp_server.h"
 #include "streaming_udp_server.h"
 #include "time_string.h"
@@ -279,6 +280,13 @@ void setup() {
 #ifndef SERIAL_DEBUG_DISABLED
   SetupSerialDebug(115200);
 #endif
+
+  // check if we should enter the factory test mode
+  if (FactoryTestRequested()) {
+    SetupFactoryTest();
+    // don't continue with the generic setup
+    return;
+  }
 
   // Create a unique hostname for the device.
 
