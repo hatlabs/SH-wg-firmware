@@ -20,6 +20,7 @@
 #include "Seasmart.h"
 #include "can_frame.h"
 #include "config.h"
+#include "firmware_info.h"
 #include "n2k_nmea0183_transform.h"
 #include "ota_update_task.h"
 #include "sensesp/net/http_server.h"
@@ -150,9 +151,9 @@ void InitNMEA2000() {
   nmea2000->SetProductInformation(
       serial_number_str,       // Manufacturer's Model serial code
       130,                     // Manufacturer's product code
-      "N2k->NMEA0183 WiFi",    // Manufacturer's Model ID
-      "1.0.0.1 (2018-04-08)",  // Manufacturer's Software version code
-      "1.0.0.0 (2018-04-08)"   // Manufacturer's Model version
+      "SH-wg",                 // Manufacturer's Model ID
+      kFirmwareVersion,        // Manufacturer's Software version code
+      "1.0.0"                  // Manufacturer's Model version
   );
   // Det device information
   nmea2000->SetDeviceInformation(
