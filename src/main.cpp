@@ -14,14 +14,12 @@
 #include <list>
 #include <memory>
 
-#include "AceButton.h"
 #include "N2kMessages.h"
 #include "NMEA2000/NMEA2000_esp32_framehandler.h"
 #include "NMEA2000_CAN.h"
 #include "Seasmart.h"
 #include "can_frame.h"
 #include "config.h"
-#include "elapsedMillis.h"
 #include "n2k_nmea0183_transform.h"
 #include "ota_update_task.h"
 #include "sensesp/net/http_server.h"
@@ -30,12 +28,14 @@
 #include "sensesp/system/led_blinker.h"
 #include "sensesp/transforms/lambda_transform.h"
 #include "sensesp_minimal_app_builder.h"
+#include "shwg.h"
+#include "shwg_button.h"
+#include "shwg_factory_test.h"
 #include "streaming_tcp_server.h"
 #include "streaming_udp_server.h"
 #include "time_string.h"
 #include "ydwg_raw.h"
 
-using namespace ace_button;
 using namespace sensesp;
 
 #define MAX_NMEA2000_MESSAGE_SEASMART_SIZE 500
@@ -190,48 +190,6 @@ void InitNMEA2000() {
   nmea2000->Open();
 }
 
-// define the button control interface
-AceButton *hall_button;
-
-void HandleButtonEvent(AceButton *button, uint8_t event_type,
-                       uint8_t button_state) {
-  digitalWrite(kRedLedPin, button_state);
-  static elapsedMillis time_since_press_event;
-
-  switch (event_type) {
-    case AceButton::kEventPressed:
-      time_since_press_event = 0;
-      break;
-    case AceButton::kEventLongReleased:
-      debugD("Long release, duration: %d", time_since_press_event);
-      if (time_since_press_event > 10000) {
-        debugD("Factory reset");
-        sensesp_app->reset();
-      } else if (time_since_press_event > 1000) {
-        debugD("Reset");
-        ESP.restart();
-      }
-      break;
-    default:
-      break;
-  }
-}
-
-static void SetupButton() {
-  // set up the hall effect sensor button interface
-
-  hall_button = new AceButton(kHallInputPin);
-  pinMode(kHallInputPin, INPUT_PULLUP);
-  hall_button->setEventHandler(HandleButtonEvent);
-
-  // enable long press events
-  ButtonConfig *button_config = hall_button->getButtonConfig();
-  button_config->setFeature(ButtonConfig::kFeatureLongPress);
-  button_config->setFeature(ButtonConfig::kFeatureSuppressAfterLongPress);
-
-  app.onRepeat(4, []() { hall_button->check(); });
-}
-
 static void SetupBlueLEDBlinker() {
   // set up the PWM channel for the blue LED
   ledcSetup(kBluePWMChannel, 2, 8);
@@ -322,6 +280,13 @@ void setup() {
 #ifndef SERIAL_DEBUG_DISABLED
   SetupSerialDebug(115200);
 #endif
+
+  // check if we should enter the factory test mode
+  if (FactoryTestRequested()) {
+    SetupFactoryTest();
+    // don't continue with the generic setup
+    return;
+  }
 
   // Create a unique hostname for the device.
 
