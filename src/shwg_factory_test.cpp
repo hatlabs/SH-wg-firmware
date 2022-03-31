@@ -50,14 +50,18 @@ static void ScanWiFiNetworks() {
     for (int i = 0; i < n; i++) {
       if (WiFi.SSID(i) == kExpectedNetworkName) {
         debugI("Found WiFi network: %s", WiFi.SSID(i).c_str());
-        // make blue LED blink rapidly
-        ledcSetup(kBluePWMChannel, 8, 8);
-        ledcAttachPin(kBlueLedPin, kBluePWMChannel);
-        ledcWrite(kBluePWMChannel, 127);  // 50% duty cycle
-        return;
+        int32_t rssi = WiFi.RSSI(i);
+        debugI("RSSI: %d", rssi);
+        if (rssi > -60) {
+          // make blue LED blink rapidly
+          ledcSetup(kBluePWMChannel, 8, 8);
+          ledcAttachPin(kBlueLedPin, kBluePWMChannel);
+          ledcWrite(kBluePWMChannel, 127);  // 50% duty cycle
+          return;
+        }
       }
     }
-    debugE("Test WiFi network not found.");
+    debugE("Test WiFi network not found or RSSI too low.");
     app.onDelay(500, ScanWiFiNetworks);
   }
 }
@@ -70,8 +74,8 @@ static void PrepareWiFiNetworkScan() {
   app.onDelay(100, ScanWiFiNetworks);
 }
 
-void HandleFactoryTestButtonEvent(AceButton* button,
-                                  uint8_t event_type, uint8_t button_state) {
+void HandleFactoryTestButtonEvent(AceButton* button, uint8_t event_type,
+                                  uint8_t button_state) {
   digitalWrite(kRedLedPin, button_state);
   static elapsedMillis time_since_press_event;
 
@@ -99,7 +103,7 @@ static void SetupFactoryTestButton() {
   hall_button->setEventHandler(HandleFactoryTestButtonEvent);
 
   // enable long press events
-  ButtonConfig *button_config = hall_button->getButtonConfig();
+  ButtonConfig* button_config = hall_button->getButtonConfig();
   button_config->setFeature(ButtonConfig::kFeatureLongPress);
   button_config->setFeature(ButtonConfig::kFeatureSuppressAfterLongPress);
 
