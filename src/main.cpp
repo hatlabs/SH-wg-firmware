@@ -28,6 +28,7 @@
 #include "sensesp/system/lambda_consumer.h"
 #include "sensesp/system/led_blinker.h"
 #include "sensesp/transforms/lambda_transform.h"
+#include "sensesp/system/ui_output.h"
 #include "sensesp_minimal_app_builder.h"
 #include "shwg.h"
 #include "shwg_button.h"
@@ -72,6 +73,16 @@ reactesp::ReactESP app;
 SensESPMinimalApp *sensesp_app;
 
 Networking *networking;
+
+UIOutput<String> ui_output_firmware_name("Firmware name", kFirmwareName);
+UIOutput<String> ui_output_firmware_version("Firmware version", kFirmwareVersion);
+UILambdaOutput<int> ui_output_uptime("Uptime", []() {
+  return millis() / 1000;
+});
+
+uint32_t can_frame_rx_counter = 0;
+UILambdaOutput<uint32_t> ui_output_can_frame_rx_counter(
+    "CAN frame RX counter", []() { return can_frame_rx_counter; });
 
 int led_state = -1;
 
@@ -187,6 +198,9 @@ void InitNMEA2000() {
   });
   nmea2000->SetMsgHandler(
       [](const tN2kMsg &n2k_msg) { n2k_msg_input.set(n2k_msg); });
+
+  can_frame_input.connect_to(new LambdaConsumer<CANFrame>(
+      [](CANFrame frame) { can_frame_rx_counter++; }));
 
   nmea2000->Open();
 }
