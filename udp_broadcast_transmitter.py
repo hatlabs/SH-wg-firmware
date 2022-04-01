@@ -8,7 +8,10 @@ import datetime
 
 def get_ydwg_data_time(row):
     elements = row.split(' ')
-    return datetime.datetime.strptime(elements[0], '%H:%M:%S.%f').timestamp()
+    dt = datetime.datetime.strptime(elements[0], '%H:%M:%S.%f')
+    # kludge to avoid negative or too small timestamps on Windows
+    dt2020 = dt.replace(year=2020)
+    return dt2020.timestamp()
 
 
 def send_data(data, ip_addrs, port):
