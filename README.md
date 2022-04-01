@@ -145,3 +145,31 @@ The protocol is specified in [SeaSmart.Net Protocol Specification](http://www.se
 
 SH-wg implements a TCP server for SeaSmart traffic on port 2222.
 SeaSmart traffic is broadcast over UDP on port 2000.
+
+## Utilities
+
+The repository includes some Python scripts for monitoring UDP broadcast traffic as well as broadcasting recordings over UDP.
+
+To monitor UDP traffic, run the following command:
+
+```shell
+./udp_broadcast_monitor.py 2002
+```
+
+where 2002 refers to the port to listen to.
+The received data will be printed out on standard output, with newline characters stripped.
+
+To record the data, redirect output to a file:
+
+```shell
+./udp_broadcast_monitor.py 2002 > output.txt
+```
+
+You can play back recorded data with the following command:
+
+```shell
+./udp_broadcast_transmitter.py 2002 data/ydwg_recording_1.txt
+```
+
+where 2002 refers to the port to broadcast on, and data/ydwg_recording_1.txt is the file to read from.
+Only YDWG RAW data is supported.
