@@ -311,13 +311,15 @@ void setup() {
                    String(mac[2], HEX) + String(mac[3], HEX) +
                    String(mac[4], HEX) + String(mac[5], HEX);
 
-  String unique_hostname = String("sh-wg-") + mac_str;
+  String hostname = "sh-wg";
 
   SensESPMinimalAppBuilder builder;
-  sensesp_app = builder.set_hostname(unique_hostname)->get_app();
+  sensesp_app = builder.set_hostname(hostname)->get_app();
 
   auto *networking = new Networking(
       "/system/net", "", "", SensESPBaseApp::get_hostname(), "thisisfine");
+
+  networking->set_wifi_manager_ap_ssid(String("Configure SH-wg ") + mac_str);
 
   auto *http_server = new HTTPServer();
 
