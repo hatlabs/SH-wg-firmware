@@ -17,6 +17,10 @@ hex_version=$(cat latest)
 pio run --environment esp32dev --target clean
 pio run --environment esp32dev
 
+# create the target path
+
+ssh $server mkdir -p $website_path/$firmware_name
+
 # copy the built binary to the server
 
 rsync -av $firmware_file $server:$website_path/$firmware_name/firmware_${hex_version}.bin
