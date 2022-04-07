@@ -23,6 +23,7 @@
 #include "firmware_info.h"
 #include "n2k_nmea0183_transform.h"
 #include "ota_update_task.h"
+#include "sensesp/net/discovery.h"
 #include "sensesp/net/http_server.h"
 #include "sensesp/net/networking.h"
 #include "sensesp/system/lambda_consumer.h"
@@ -320,6 +321,10 @@ void setup() {
       "/system/net", "", "", SensESPBaseApp::get_hostname(), "thisisfine");
 
   networking->set_wifi_manager_ap_ssid(String("Configure SH-wg ") + mac_str);
+
+
+  // create the MDNS discovery object
+  auto mdns_discovery_ = new MDNSDiscovery();
 
   auto *http_server = new HTTPServer();
 
