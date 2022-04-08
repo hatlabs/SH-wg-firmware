@@ -6,6 +6,7 @@
 #include "elapsedMillis.h"
 #include "sensesp.h"
 #include "shwg.h"
+#include "firmware_info.h"
 
 using namespace ace_button;
 using namespace sensesp;
@@ -57,6 +58,7 @@ static void ScanWiFiNetworks() {
           ledcSetup(kBluePWMChannel, 8, 8);
           ledcAttachPin(kBlueLedPin, kBluePWMChannel);
           ledcWrite(kBluePWMChannel, 127);  // 50% duty cycle
+          debugI("Waiting for magnet test");
           return;
         }
       }
@@ -74,7 +76,19 @@ static void PrepareWiFiNetworkScan() {
   app.onDelay(100, ScanWiFiNetworks);
 }
 
-void HandleFactoryTestButtonEvent(AceButton* button, uint8_t event_type,
+static void PrintInfo() {
+  uint8_t mac[6];
+  WiFi.macAddress(mac);
+  String mac_str = String(mac[0], HEX) + String(mac[1], HEX) +
+                   String(mac[2], HEX) + String(mac[3], HEX) +
+                   String(mac[4], HEX) + String(mac[5], HEX);
+
+  Serial.println("***** Product Info *****");
+  Serial.printf("%s %s %s\n", kFirmwareName, kFirmwareVersion, mac_str.c_str());
+  Serial.println("************************");
+}
+
+static void HandleFactoryTestButtonEvent(AceButton* button, uint8_t event_type,
                                   uint8_t button_state) {
   digitalWrite(kRedLedPin, button_state);
   static elapsedMillis time_since_press_event;
@@ -89,6 +103,7 @@ void HandleFactoryTestButtonEvent(AceButton* button, uint8_t event_type,
         debugD("Detected a long press");
         // stop yellow LED blinking and turn it on
         ledcWrite(kYellowPWMChannel, 255);
+        PrintInfo();
       }
       break;
   }
