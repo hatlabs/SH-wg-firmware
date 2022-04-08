@@ -85,6 +85,19 @@ uint32_t can_frame_rx_counter = 0;
 UILambdaOutput<uint32_t> ui_output_can_frame_rx_counter(
     "CAN frame RX counter", []() { return can_frame_rx_counter; });
 
+UIOutput<String> ui_output_build_info =
+    UIOutput<String>("Built at", __DATE__ " " __TIME__);
+UILambdaOutput<String> ui_output_hostname = UILambdaOutput<String>(
+    "Hostname", []() { return sensesp_app->get_hostname(); });
+UILambdaOutput<String> ui_output_ip_address = UILambdaOutput<String>(
+    "IP address", []() { return WiFi.localIP().toString(); });
+UILambdaOutput<String> ui_output_mac_address =
+    UILambdaOutput<String>("MAC", []() { return WiFi.macAddress(); });
+UILambdaOutput<String> ui_output_wifi_ssid =
+    UILambdaOutput<String>("SSID", []() { return WiFi.SSID(); });
+UILambdaOutput<int8_t> ui_output_wifi_rssi = UILambdaOutput<int8_t>(
+    "WiFi signal strength", []() { return WiFi.RSSI(); });
+
 int led_state = -1;
 
 uint32_t GetBoardSerialNumber() {
