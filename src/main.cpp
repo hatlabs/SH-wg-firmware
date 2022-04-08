@@ -28,8 +28,8 @@
 #include "sensesp/net/networking.h"
 #include "sensesp/system/lambda_consumer.h"
 #include "sensesp/system/led_blinker.h"
-#include "sensesp/transforms/lambda_transform.h"
 #include "sensesp/system/ui_output.h"
+#include "sensesp/transforms/lambda_transform.h"
 #include "sensesp_minimal_app_builder.h"
 #include "shwg.h"
 #include "shwg_button.h"
@@ -76,14 +76,27 @@ SensESPMinimalApp *sensesp_app;
 Networking *networking;
 
 UIOutput<String> ui_output_firmware_name("Firmware name", kFirmwareName);
-UIOutput<String> ui_output_firmware_version("Firmware version", kFirmwareVersion);
-UILambdaOutput<int> ui_output_uptime("Uptime", []() {
-  return millis() / 1000;
-});
+UIOutput<String> ui_output_firmware_version("Firmware version",
+                                            kFirmwareVersion);
+UILambdaOutput<int> ui_output_uptime("Uptime",
+                                     []() { return millis() / 1000; });
 
 uint32_t can_frame_rx_counter = 0;
 UILambdaOutput<uint32_t> ui_output_can_frame_rx_counter(
     "CAN frame RX counter", []() { return can_frame_rx_counter; });
+
+UIOutput<String> ui_output_build_info =
+    UIOutput<String>("Built at", __DATE__ " " __TIME__);
+UILambdaOutput<String> ui_output_hostname = UILambdaOutput<String>(
+    "Hostname", []() { return sensesp_app->get_hostname(); });
+UILambdaOutput<String> ui_output_ip_address = UILambdaOutput<String>(
+    "IP address", []() { return WiFi.localIP().toString(); });
+UILambdaOutput<String> ui_output_mac_address =
+    UILambdaOutput<String>("MAC", []() { return WiFi.macAddress(); });
+UILambdaOutput<String> ui_output_wifi_ssid =
+    UILambdaOutput<String>("SSID", []() { return WiFi.SSID(); });
+UILambdaOutput<int8_t> ui_output_wifi_rssi = UILambdaOutput<int8_t>(
+    "WiFi signal strength", []() { return WiFi.RSSI(); });
 
 int led_state = -1;
 
@@ -161,11 +174,11 @@ void InitNMEA2000() {
   snprintf(serial_number_str, 32, "%lu", (long unsigned int)serial_number);
 
   nmea2000->SetProductInformation(
-      serial_number_str,       // Manufacturer's Model serial code
-      130,                     // Manufacturer's product code
-      "SH-wg",                 // Manufacturer's Model ID
-      kFirmwareVersion,        // Manufacturer's Software version code
-      "1.0.0"                  // Manufacturer's Model version
+      serial_number_str,  // Manufacturer's Model serial code
+      130,                // Manufacturer's product code
+      "SH-wg",            // Manufacturer's Model ID
+      kFirmwareVersion,   // Manufacturer's Software version code
+      "1.0.0"             // Manufacturer's Model version
   );
   // Det device information
   nmea2000->SetDeviceInformation(
@@ -291,6 +304,21 @@ static void SetupTransmitters() {
   ydwg_raw_transform->connect_to(ydwg_raw_udp_server);
 }
 
+String MacAddrToString(uint8_t *mac, bool add_colons) {
+  String mac_string = "";
+  for (int i = 0; i < 6; i++) {
+    char buf[3];
+    sprintf(buf, "%02x", mac[i]);
+    mac_string += buf;
+    if (add_colons) {
+      if (i < 5) {
+        mac_string += ":";
+      }
+    }
+  }
+  return mac_string;
+}
+
 // The setup function performs one-time application initialization.
 void setup() {
 #ifndef SERIAL_DEBUG_DISABLED
@@ -308,9 +336,7 @@ void setup() {
 
   uint8_t mac[6];
   WiFi.macAddress(mac);
-  String mac_str = String(mac[0], HEX) + String(mac[1], HEX) +
-                   String(mac[2], HEX) + String(mac[3], HEX) +
-                   String(mac[4], HEX) + String(mac[5], HEX);
+  String mac_str = MacAddrToString(mac);
 
   String hostname = "sh-wg";
 
@@ -321,7 +347,6 @@ void setup() {
       "/system/net", "", "", SensESPBaseApp::get_hostname(), "thisisfine");
 
   networking->set_wifi_manager_ap_ssid(String("Configure SH-wg ") + mac_str);
-
 
   // create the MDNS discovery object
   auto mdns_discovery_ = new MDNSDiscovery();
