@@ -28,8 +28,8 @@
 #include "sensesp/net/networking.h"
 #include "sensesp/system/lambda_consumer.h"
 #include "sensesp/system/led_blinker.h"
-#include "sensesp/transforms/lambda_transform.h"
 #include "sensesp/system/ui_output.h"
+#include "sensesp/transforms/lambda_transform.h"
 #include "sensesp_minimal_app_builder.h"
 #include "shwg.h"
 #include "shwg_button.h"
@@ -76,10 +76,10 @@ SensESPMinimalApp *sensesp_app;
 Networking *networking;
 
 UIOutput<String> ui_output_firmware_name("Firmware name", kFirmwareName);
-UIOutput<String> ui_output_firmware_version("Firmware version", kFirmwareVersion);
-UILambdaOutput<int> ui_output_uptime("Uptime", []() {
-  return millis() / 1000;
-});
+UIOutput<String> ui_output_firmware_version("Firmware version",
+                                            kFirmwareVersion);
+UILambdaOutput<int> ui_output_uptime("Uptime",
+                                     []() { return millis() / 1000; });
 
 uint32_t can_frame_rx_counter = 0;
 UILambdaOutput<uint32_t> ui_output_can_frame_rx_counter(
@@ -321,7 +321,6 @@ void setup() {
       "/system/net", "", "", SensESPBaseApp::get_hostname(), "thisisfine");
 
   networking->set_wifi_manager_ap_ssid(String("Configure SH-wg ") + mac_str);
-
 
   // create the MDNS discovery object
   auto mdns_discovery_ = new MDNSDiscovery();
