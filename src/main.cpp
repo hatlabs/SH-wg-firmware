@@ -161,11 +161,11 @@ void InitNMEA2000() {
   snprintf(serial_number_str, 32, "%lu", (long unsigned int)serial_number);
 
   nmea2000->SetProductInformation(
-      serial_number_str,       // Manufacturer's Model serial code
-      130,                     // Manufacturer's product code
-      "SH-wg",                 // Manufacturer's Model ID
-      kFirmwareVersion,        // Manufacturer's Software version code
-      "1.0.0"                  // Manufacturer's Model version
+      serial_number_str,  // Manufacturer's Model serial code
+      130,                // Manufacturer's product code
+      "SH-wg",            // Manufacturer's Model ID
+      kFirmwareVersion,   // Manufacturer's Software version code
+      "1.0.0"             // Manufacturer's Model version
   );
   // Det device information
   nmea2000->SetDeviceInformation(
@@ -291,6 +291,21 @@ static void SetupTransmitters() {
   ydwg_raw_transform->connect_to(ydwg_raw_udp_server);
 }
 
+String MacAddrToString(uint8_t *mac, bool add_colons) {
+  String mac_string = "";
+  for (int i = 0; i < 6; i++) {
+    char buf[3];
+    sprintf(buf, "%02x", mac[i]);
+    mac_string += buf;
+    if (add_colons) {
+      if (i < 5) {
+        mac_string += ":";
+      }
+    }
+  }
+  return mac_string;
+}
+
 // The setup function performs one-time application initialization.
 void setup() {
 #ifndef SERIAL_DEBUG_DISABLED
@@ -308,9 +323,7 @@ void setup() {
 
   uint8_t mac[6];
   WiFi.macAddress(mac);
-  String mac_str = String(mac[0], HEX) + String(mac[1], HEX) +
-                   String(mac[2], HEX) + String(mac[3], HEX) +
-                   String(mac[4], HEX) + String(mac[5], HEX);
+  String mac_str = MacAddrToString(mac);
 
   String hostname = "sh-wg";
 

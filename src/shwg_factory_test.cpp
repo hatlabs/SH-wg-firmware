@@ -79,9 +79,7 @@ static void PrepareWiFiNetworkScan() {
 static void PrintInfo() {
   uint8_t mac[6];
   WiFi.macAddress(mac);
-  String mac_str = String(mac[0], HEX) + String(mac[1], HEX) +
-                   String(mac[2], HEX) + String(mac[3], HEX) +
-                   String(mac[4], HEX) + String(mac[5], HEX);
+  String mac_str = MacAddrToString(mac);
 
   Serial.println("***** Product Info *****");
   Serial.printf("%s %s %s\n", kFirmwareName, kFirmwareVersion, mac_str.c_str());
