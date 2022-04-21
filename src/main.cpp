@@ -38,6 +38,7 @@
 #include "streaming_udp_server.h"
 #include "time_string.h"
 #include "ydwg_raw_output.h"
+#include "ydwg_raw_parser.h"
 
 using namespace sensesp;
 
@@ -82,8 +83,13 @@ UILambdaOutput<int> ui_output_uptime("Uptime",
                                      []() { return millis() / 1000; });
 
 uint32_t can_frame_rx_counter = 0;
+uint32_t can_frame_tx_counter = 0;
+
 UILambdaOutput<uint32_t> ui_output_can_frame_rx_counter(
     "CAN frame RX counter", []() { return can_frame_rx_counter; });
+
+UILambdaOutput<uint32_t> ui_output_can_frame_tx_counter(
+    "CAN frame TX counter", []() { return can_frame_tx_counter; });
 
 UIOutput<String> ui_output_build_info =
     UIOutput<String>("Built at", __DATE__ " " __TIME__);
@@ -262,7 +268,7 @@ static void SetupYellowLEDBlinker(
 }
 
 static void SetupTransmitters() {
-  auto ydwg_raw_transform =
+  auto can_to_ydwg_transform =
       new LambdaTransform<CANFrame, String>([](CANFrame frame) {
         struct timeval tv;
         gettimeofday(&tv, NULL);
@@ -272,6 +278,7 @@ static void SetupTransmitters() {
 
   auto n2k_to_0183_transform = new N2KTo0183Transform();
   auto n2k_to_seasmart_transform = new SeasmartTransform();
+  auto ydwg_raw_to_can_transform = new YDWGRawToCANFrameTransform();
   // the message handler called within this consumer will write its output
   // to nmea0183_msg_observable
   n2k_msg_input.connect_to(n2k_to_0183_transform);
@@ -296,12 +303,24 @@ static void SetupTransmitters() {
   n2k_to_seasmart_transform->connect_to(seasmart_udp_server);
 
   // connect the CAN frame input to the YDWG raw transform
-  can_frame_input.connect_to(ydwg_raw_transform)
+  can_frame_input.connect_to(can_to_ydwg_transform)
       ->connect_to(ydwg_raw_tcp_server);
 
-  SetupYellowLEDBlinker(ydwg_raw_transform);
+  SetupYellowLEDBlinker(can_to_ydwg_transform);
 
-  ydwg_raw_transform->connect_to(ydwg_raw_udp_server);
+  can_to_ydwg_transform->connect_to(ydwg_raw_udp_server);
+
+  // ydwg_raw_udp_server->connect_to(new LambdaConsumer<String>(
+  //   [](const String &str) { debugD("Received over UDP: %s", str.c_str());
+  //   }));
+
+  ydwg_raw_udp_server->connect_to(ydwg_raw_to_can_transform)
+      ->connect_to(new LambdaConsumer<CANFrame>([](CANFrame frame) {
+        // debugD("Sending CAN Frame with ID %d and length %d", frame.id,
+        // frame.len);
+        can_frame_tx_counter++;
+        nmea2000->CANSendFrame(frame.id, frame.len, frame.buf);
+      }));
 }
 
 String MacAddrToString(uint8_t *mac, bool add_colons) {
@@ -384,7 +403,10 @@ void setup() {
 
   SetupTransmitters();
 
-  app.onRepeat(1000, []() { debugD("Uptime: %lu", millis() / 1000); });
+  app.onRepeat(1000, []() {
+    debugD("Uptime: %lu, CAN RX: %d CAN TX: %d", millis() / 1000,
+           can_frame_rx_counter, can_frame_tx_counter);
+  });
 
   // Handle incoming NMEA 2000 messages
   app.onRepeat(1, []() { nmea2000->ParseMessages(); });
