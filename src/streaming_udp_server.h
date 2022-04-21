@@ -10,7 +10,7 @@
 
 using namespace sensesp;
 
-class StreamingUDPServer : public ValueConsumer<String>, public Startable {
+class StreamingUDPServer : public ValueProducer<String>, public ValueConsumer<String>, public Startable {
  public:
   StreamingUDPServer(const uint16_t port, Networking *networking)
       : Startable(50), networking_{networking}, port_{port} {}
@@ -35,8 +35,17 @@ class StreamingUDPServer : public ValueConsumer<String>, public Startable {
             debugI("Starting Streaming UDP server on port %d", port_);
             if (async_udp_.listen(port_)) {
               connected_ = true;
+              async_udp_.onPacket([this](AsyncUDPPacket packet) {
+                // ensure that the received packet is zero-terminated
+                char buf[packet.length() + 1];
+                memcpy(buf, packet.data(), packet.length());
+                buf[packet.length()] = '\0';
+
+                String packet_str = String(buf);
+                this->emit(packet_str);
+              });
             } else {
-              debugE("Startup failed - port reserved?");
+              debugE("UDP Server startup failed - port reserved?");
             }
           }
         }));
