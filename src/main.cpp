@@ -227,7 +227,7 @@ void InitNMEA2000() {
 
 static void SetupBlueLEDBlinker() {
   // set up the PWM channel for the blue LED
-  ledcSetup(kBluePWMChannel, 2, 8);
+  ledcSetup(kBluePWMChannel, 2, 16);
 
   auto wifi_state_consumer =
       new LambdaConsumer<WiFiState>([](const WiFiState state) {
