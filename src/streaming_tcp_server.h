@@ -84,7 +84,8 @@ class StreamingTCPServer : public ValueConsumer<String>, public Startable {
     if (enabled_) {
       networking_->connect_to(
           new LambdaConsumer<WifiState>([this](WifiState state) {
-            if (state == WifiState::kWifiConnectedToAP) {
+            if ((state == WiFiState::kWifiConnectedToAP) ||
+                (state == WiFiState::kWifiAPModeActivated)) {
               debugI("Starting Streaming TCP server on port %d", port_);
               server_->begin();
             }

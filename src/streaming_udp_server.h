@@ -38,7 +38,8 @@ class StreamingUDPServer : public ValueProducer<String>,
     if (enabled_) {
       networking_->connect_to(
           new LambdaConsumer<WifiState>([this](WifiState state) {
-            if (state == WifiState::kWifiConnectedToAP) {
+            if ((state == WiFiState::kWifiConnectedToAP) ||
+                (state == WiFiState::kWifiAPModeActivated)) {
               debugI("Starting Streaming UDP server on port %d", port_);
               if (async_udp_.listen(port_)) {
                 connected_ = true;
