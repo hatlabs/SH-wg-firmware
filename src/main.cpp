@@ -412,7 +412,7 @@ void SetupUIComponents() {
       "Broadcast and/or receive NMEA 2000 traffic as YDWG RAW over UDP.", 1400);
 
   checkbox_config_translate_to_seasmart = new CheckboxConfig(
-      true, "Enable", "/Network/Translate to SeaSmart",
+      false, "Enable", "/Network/Translate to SeaSmart",
       "Translate NMEA 2000 messages to SeaSmart.Net format. "
       "NMEA 0183 output must be enabled for the SeaSmart.Net messages to "
       "be transmitted.",
@@ -426,12 +426,12 @@ void SetupUIComponents() {
       1700);
 
   port_config_nmea0183_tcp_tx = new PortConfig(
-      false, kDefaultNMEA0183TCPServerPort, "/Network/NMEA 0183 TCP Server",
+      true, kDefaultNMEA0183TCPServerPort, "/Network/NMEA 0183 TCP Server",
       "Enable a TCP server for transmitting NMEA 0183 and SeaSmart.Net data.",
       1800);
 
   port_config_nmea0183_udp_tx = new PortConfig(
-      false, kDefaultNMEA0183UDPServerPort, "/Network/NMEA 0183 over UDP",
+      true, kDefaultNMEA0183UDPServerPort, "/Network/NMEA 0183 over UDP",
       "Broadcast NMEA 0183 and SeaSmart.Net data over UDP.", 1900);
 }
 
