@@ -8,8 +8,8 @@
 #include <memory>
 
 #include "sensesp/net/networking.h"
-#include "sensesp/system/valueconsumer.h"
 #include "sensesp/system/lambda_consumer.h"
+#include "sensesp/system/valueconsumer.h"
 
 using namespace sensesp;
 
@@ -27,7 +27,7 @@ class StreamingTCPServer : public ValueConsumer<String>, public Startable {
   }
 
   void send_buf(const char *buf) {
-    //debugD("Sending: %s", buf);
+    // debugD("Sending: %s", buf);
     for (auto it = clients_.begin(); it != clients_.end(); it++) {
       if ((*it) != NULL && (*it)->connected()) {
         (*it)->print(buf);
@@ -39,10 +39,15 @@ class StreamingTCPServer : public ValueConsumer<String>, public Startable {
     send_buf(new_value.c_str());
   }
 
+  void set_enabled(bool enabled) { enabled_ = enabled; }
+
  protected:
   Networking *networking_;
   WiFiServer *server_;
   const uint16_t port_;
+
+  bool enabled_ = true;
+
   std::list<WiFiClientPtr> clients_;
 
   void add_client(WiFiClient &client) {
@@ -76,12 +81,16 @@ class StreamingTCPServer : public ValueConsumer<String>, public Startable {
   }
 
   void start() override {
-    networking_->connect_to(new LambdaConsumer<WifiState>([this](WifiState state) {
-      if (state == WifiState::kWifiConnectedToAP) {
-        debugI("Starting Streaming TCP server on port %d", port_);
-        server_->begin();
-      }
-    }));
+    if (enabled_) {
+      networking_->connect_to(
+          new LambdaConsumer<WifiState>([this](WifiState state) {
+            if ((state == WiFiState::kWifiConnectedToAP) ||
+                (state == WiFiState::kWifiAPModeActivated)) {
+              debugI("Starting Streaming TCP server on port %d", port_);
+              server_->begin();
+            }
+          }));
+    }
   }
 };
 

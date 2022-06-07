@@ -1,3 +1,4 @@
+
 #ifndef SH_WG_CONFIG_H_
 #define SH_WG_CONFIG_H_
 
@@ -19,11 +20,11 @@ constexpr int kRedPWMChannel = 0;
 constexpr int kYellowPWMChannel = 1;
 constexpr int kBluePWMChannel = 2;
 
-constexpr uint16_t kSeasmartTCPServerPort = 2222;
-constexpr uint16_t kYdwgRawTCPServerPort = 2223;
+constexpr uint16_t kDefaultNMEA0183TCPServerPort = 2222;
+constexpr uint16_t kDefaultYdwgRawTCPServerPort = 2223;
 
-constexpr uint16_t kSeasmartUDPServerPort = 2000;
-constexpr uint16_t kYdwgRawUDPServerPort = 2002;
+constexpr uint16_t kDefaultNMEA0183UDPServerPort = 2000;
+constexpr uint16_t kDefaultYdwgRawUDPServerPort = 2002;
 
 // update the system time every hour
 constexpr unsigned long kTimeUpdatePeriodMs = 3600 * 1000;

@@ -37,6 +37,7 @@
 #include "streaming_tcp_server.h"
 #include "streaming_udp_server.h"
 #include "time_string.h"
+#include "ui_controls.h"
 #include "ydwg_raw_output.h"
 #include "ydwg_raw_parser.h"
 
@@ -61,10 +62,10 @@ const unsigned long ReceiveMessages[] PROGMEM = {
 
 tNMEA2000_esp32_FH *nmea2000;
 
-StreamingTCPServer *seasmart_tcp_server;
+StreamingTCPServer *nmea0183_tcp_server;
 StreamingTCPServer *ydwg_raw_tcp_server;
 
-StreamingUDPServer *seasmart_udp_server;
+StreamingUDPServer *nmea0183_udp_server;
 StreamingUDPServer *ydwg_raw_udp_server;
 
 // time elapsed since last system time update
@@ -75,6 +76,14 @@ reactesp::ReactESP app;
 SensESPMinimalApp *sensesp_app;
 
 Networking *networking;
+
+CheckboxConfig *checkbox_config_enable_firmware_updates;
+PortConfig *port_config_ydwg_raw_tcp_tx;
+BiDiPortConfig *port_config_ydwg_raw_udp;
+CheckboxConfig *checkbox_config_translate_to_seasmart;
+CheckboxConfig *checkbox_config_translate_to_nmea0183;
+PortConfig *port_config_nmea0183_tcp_tx;
+PortConfig *port_config_nmea0183_udp_tx;
 
 UIOutput<String> ui_output_firmware_name("Firmware name", kFirmwareName);
 UIOutput<String> ui_output_firmware_version("Firmware version",
@@ -227,7 +236,7 @@ void InitNMEA2000() {
 
 static void SetupBlueLEDBlinker() {
   // set up the PWM channel for the blue LED
-  ledcSetup(kBluePWMChannel, 2, 8);
+  ledcSetup(kBluePWMChannel, 2, 16);
 
   auto wifi_state_consumer =
       new LambdaConsumer<WiFiState>([](const WiFiState state) {
@@ -279,48 +288,96 @@ static void SetupTransmitters() {
   auto n2k_to_0183_transform = new N2KTo0183Transform();
   auto n2k_to_seasmart_transform = new SeasmartTransform();
   auto ydwg_raw_to_can_transform = new YDWGRawToCANFrameTransform();
-  // the message handler called within this consumer will write its output
-  // to nmea0183_msg_observable
-  n2k_msg_input.connect_to(n2k_to_0183_transform);
-  n2k_msg_input.connect_to(n2k_to_seasmart_transform);
 
-  seasmart_tcp_server =
-      new StreamingTCPServer(kSeasmartTCPServerPort, networking);
-  ydwg_raw_tcp_server =
-      new StreamingTCPServer(kYdwgRawTCPServerPort, networking);
+  // if configured, connect the N2K input to NMEA 0183 transform
 
-  seasmart_udp_server =
-      new StreamingUDPServer(kSeasmartUDPServerPort, networking);
-  ydwg_raw_udp_server =
-      new StreamingUDPServer(kYdwgRawUDPServerPort, networking);
+  if (checkbox_config_translate_to_nmea0183->get_value()) {
+    // the message handler called within this consumer will write its output
+    // to nmea0183_msg_observable
+    debugD("Connecting N2K to NMEA 0183");
+    n2k_msg_input.connect_to(n2k_to_0183_transform);
+  }
+
+  // if configured, connect the N2K input to Seasmart transform
+
+  if (checkbox_config_translate_to_seasmart->get_value()) {
+    debugD("Connecting N2K to Seasmart");
+    n2k_msg_input.connect_to(n2k_to_seasmart_transform);
+  }
+
+  // set up the YDWG RAW TCP server
+
+  debugD("Setting up YDWG RAW TCP server");
+  int ydwg_raw_tcp_port = port_config_ydwg_raw_tcp_tx->get_port();
+  ydwg_raw_tcp_server = new StreamingTCPServer(ydwg_raw_tcp_port, networking);
+  ydwg_raw_tcp_server->set_enabled(port_config_ydwg_raw_tcp_tx->get_enabled());
+
+  // set up the YDWG RAW UDP server
+
+  debugD("Setting up YDWG RAW UDP server");
+  int ydwg_raw_udp_port = port_config_ydwg_raw_udp->get_port();
+  ydwg_raw_udp_server = new StreamingUDPServer(ydwg_raw_udp_port, networking);
+  if (!port_config_ydwg_raw_udp->get_tx_enabled() &&
+      !port_config_ydwg_raw_udp->get_rx_enabled()) {
+    ydwg_raw_udp_server->set_enabled(false);
+  }
+
+  // set up the NMEA 0183 TCP server
+
+  debugD("Setting up NMEA 0183 TCP server");
+  int nmea0183_tcp_port = port_config_nmea0183_tcp_tx->get_port();
+  nmea0183_tcp_server = new StreamingTCPServer(nmea0183_tcp_port, networking);
+  nmea0183_tcp_server->set_enabled(port_config_nmea0183_tcp_tx->get_enabled());
+
+  // set up the NMEA 0183 UDP server
+
+  debugD("Setting up NMEA 0183 UDP server");
+  int nmea0183_udp_port = port_config_nmea0183_udp_tx->get_port();
+  nmea0183_udp_server = new StreamingUDPServer(nmea0183_udp_port, networking);
+  nmea0183_udp_server->set_enabled(port_config_nmea0183_udp_tx->get_enabled());
 
   // send the generated NMEA 0183 message
-  n2k_to_0183_transform->connect_to(seasmart_tcp_server);
-  n2k_to_0183_transform->connect_to(seasmart_udp_server);
+  if (checkbox_config_translate_to_nmea0183->get_value()) {
+    debugD("Connecting NMEA 0183 to consumers");
+    n2k_to_0183_transform->connect_to(nmea0183_tcp_server);
+    n2k_to_0183_transform->connect_to(nmea0183_udp_server);
+  }
 
   // send the generated SeaSmart message
-  n2k_to_seasmart_transform->connect_to(seasmart_tcp_server);
-  n2k_to_seasmart_transform->connect_to(seasmart_udp_server);
+  if (checkbox_config_translate_to_seasmart->get_value()) {
+    debugD("Connecting Seasmart to consumers");
+    n2k_to_seasmart_transform->connect_to(nmea0183_tcp_server);
+    n2k_to_seasmart_transform->connect_to(nmea0183_udp_server);
+  }
 
   // connect the CAN frame input to the YDWG raw transform
-  can_frame_input.connect_to(can_to_ydwg_transform)
-      ->connect_to(ydwg_raw_tcp_server);
+  debugD("Connecting CAN input to YDWG raw transform");
+  can_frame_input.connect_to(can_to_ydwg_transform);
 
-  SetupYellowLEDBlinker(can_to_ydwg_transform);
+  if (port_config_ydwg_raw_tcp_tx->get_enabled()) {
+    can_to_ydwg_transform->connect_to(ydwg_raw_tcp_server);
+  }
 
-  can_to_ydwg_transform->connect_to(ydwg_raw_udp_server);
+  if (port_config_ydwg_raw_udp->get_tx_enabled()) {
+    debugD("Connecting YDWG raw to consumers");
+    SetupYellowLEDBlinker(can_to_ydwg_transform);
 
+    can_to_ydwg_transform->connect_to(ydwg_raw_udp_server);
+  }
   // ydwg_raw_udp_server->connect_to(new LambdaConsumer<String>(
   //   [](const String &str) { debugD("Received over UDP: %s", str.c_str());
   //   }));
 
-  ydwg_raw_udp_server->connect_to(ydwg_raw_to_can_transform)
-      ->connect_to(new LambdaConsumer<CANFrame>([](CANFrame frame) {
-        // debugD("Sending CAN Frame with ID %d and length %d", frame.id,
-        // frame.len);
-        can_frame_tx_counter++;
-        nmea2000->CANSendFrame(frame.id, frame.len, frame.buf);
-      }));
+  if (port_config_ydwg_raw_udp->get_rx_enabled()) {
+    debugD("Connecting YDWG RAW RX to CAN TX");
+    ydwg_raw_udp_server->connect_to(ydwg_raw_to_can_transform)
+        ->connect_to(new LambdaConsumer<CANFrame>([](CANFrame frame) {
+          // debugD("Sending CAN Frame with ID %d and length %d", frame.id,
+          // frame.len);
+          can_frame_tx_counter++;
+          nmea2000->CANSendFrame(frame.id, frame.len, frame.buf);
+        }));
+  }
 }
 
 String MacAddrToString(uint8_t *mac, bool add_colons) {
@@ -337,6 +394,47 @@ String MacAddrToString(uint8_t *mac, bool add_colons) {
   }
   return mac_string;
 }
+
+void SetupUIComponents() {
+  checkbox_config_enable_firmware_updates = new CheckboxConfig(
+      true, "Enable", "/System/Enable Firmware Updates",
+      "If enabled, the device will periodically check online and "
+      "install any available firmware updates.",
+      1100);
+
+  port_config_ydwg_raw_tcp_tx = new PortConfig(
+      true, kDefaultYdwgRawTCPServerPort, "/Network/YDWG RAW TCP Server",
+      "Enable TCP server for transmitting YDWG RAW data.", 1300);
+
+  port_config_ydwg_raw_udp = new BiDiPortConfig(
+      true, false, "Transmit to WiFi", "Receive from WiFi",
+      kDefaultYdwgRawUDPServerPort, "/Network/YDWG RAW over UDP",
+      "Broadcast and/or receive NMEA 2000 traffic as YDWG RAW over UDP.", 1400);
+
+  checkbox_config_translate_to_seasmart = new CheckboxConfig(
+      false, "Enable", "/Network/Translate to SeaSmart",
+      "Translate NMEA 2000 messages to SeaSmart.Net format. "
+      "NMEA 0183 output must be enabled for the SeaSmart.Net messages to "
+      "be transmitted.",
+      1600);
+
+  checkbox_config_translate_to_nmea0183 = new CheckboxConfig(
+      true, "Enable", "/Network/Translate to NMEA 0183",
+      "Translate NMEA 2000 messages to NMEA 0183 sentences. "
+      "NMEA 0183 output must be enabled for the sentences to "
+      "be transmitted.",
+      1700);
+
+  port_config_nmea0183_tcp_tx = new PortConfig(
+      true, kDefaultNMEA0183TCPServerPort, "/Network/NMEA 0183 TCP Server",
+      "Enable a TCP server for transmitting NMEA 0183 and SeaSmart.Net data.",
+      1800);
+
+  port_config_nmea0183_udp_tx = new PortConfig(
+      true, kDefaultNMEA0183UDPServerPort, "/Network/NMEA 0183 over UDP",
+      "Broadcast NMEA 0183 and SeaSmart.Net data over UDP.", 1900);
+}
+
 
 // The setup function performs one-time application initialization.
 void setup() {
@@ -362,8 +460,13 @@ void setup() {
   SensESPMinimalAppBuilder builder;
   sensesp_app = builder.set_hostname(hostname)->get_app();
 
-  auto *networking = new Networking(
-      "/system/net", "", "", SensESPBaseApp::get_hostname(), "thisisfine");
+  // UI components can only be instantiated once the SensESPBaseApp
+  // has been created and filesystem mounted
+
+  SetupUIComponents();
+
+  networking = new Networking("/System/WiFi Settings", "", "",
+                              SensESPBaseApp::get_hostname(), "thisisfine");
 
   networking->set_wifi_manager_ap_ssid(String("Configure SH-wg ") + mac_str);
 
@@ -372,7 +475,13 @@ void setup() {
 
   auto *http_server = new HTTPServer();
 
-  xTaskCreate(ExecuteOTAUpdateTask, "OTAUpdateTask", 8000, NULL, 1, NULL);
+  if (checkbox_config_enable_firmware_updates->get_value()) {
+    xTaskCreate(ExecuteOTAUpdateTask, "OTAUpdateTask", 8000, NULL, 1, NULL);
+  } else {
+    debugI("Firmware updates disabled.");
+  }
+
+  debugD("Setting up LEDs");
 
   // enable CAN RX/TX LEDs
   pinMode(kCanLedEnPin, OUTPUT);
@@ -386,7 +495,11 @@ void setup() {
   digitalWrite(kBlueLedPin, LOW);
   digitalWrite(kYellowLedPin, LOW);
 
+  debugD("Set up the button interface");
+
   SetupButton();
+
+  debugD("Set up the blue LED blinker");
 
   SetupBlueLEDBlinker();
 

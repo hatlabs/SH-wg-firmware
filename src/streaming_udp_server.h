@@ -10,7 +10,9 @@
 
 using namespace sensesp;
 
-class StreamingUDPServer : public ValueProducer<String>, public ValueConsumer<String>, public Startable {
+class StreamingUDPServer : public ValueProducer<String>,
+                           public ValueConsumer<String>,
+                           public Startable {
  public:
   StreamingUDPServer(const uint16_t port, Networking *networking)
       : Startable(50), networking_{networking}, port_{port} {}
@@ -22,33 +24,40 @@ class StreamingUDPServer : public ValueProducer<String>, public ValueConsumer<St
     }
   }
 
+  void set_enabled(bool enabled) { enabled_ = enabled; }
+
  protected:
   Networking *networking_;
   const uint16_t port_;
   AsyncUDP async_udp_;
   bool connected_ = false;
 
-  void start() override {
-    networking_->connect_to(
-        new LambdaConsumer<WifiState>([this](WifiState state) {
-          if (state == WifiState::kWifiConnectedToAP) {
-            debugI("Starting Streaming UDP server on port %d", port_);
-            if (async_udp_.listen(port_)) {
-              connected_ = true;
-              async_udp_.onPacket([this](AsyncUDPPacket packet) {
-                // ensure that the received packet is zero-terminated
-                char buf[packet.length() + 1];
-                memcpy(buf, packet.data(), packet.length());
-                buf[packet.length()] = '\0';
+  bool enabled_ = true;
 
-                String packet_str = String(buf);
-                this->emit(packet_str);
-              });
-            } else {
-              debugE("UDP Server startup failed - port reserved?");
+  void start() override {
+    if (enabled_) {
+      networking_->connect_to(
+          new LambdaConsumer<WifiState>([this](WifiState state) {
+            if ((state == WiFiState::kWifiConnectedToAP) ||
+                (state == WiFiState::kWifiAPModeActivated)) {
+              debugI("Starting Streaming UDP server on port %d", port_);
+              if (async_udp_.listen(port_)) {
+                connected_ = true;
+                async_udp_.onPacket([this](AsyncUDPPacket packet) {
+                  // ensure that the received packet is zero-terminated
+                  char buf[packet.length() + 1];
+                  memcpy(buf, packet.data(), packet.length());
+                  buf[packet.length()] = '\0';
+
+                  String packet_str = String(buf);
+                  this->emit(packet_str);
+                });
+              } else {
+                debugE("UDP Server startup failed - port reserved?");
+              }
             }
-          }
-        }));
+          }));
+    }
   }
 };
 
