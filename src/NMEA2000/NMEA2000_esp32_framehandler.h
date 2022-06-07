@@ -18,6 +18,13 @@ class tNMEA2000_esp32_FH : public tNMEA2000_esp32 {
                                                 unsigned char& len,
                                                 unsigned char* buf));
 
+  // expose CANSendFrame to public
+  bool CANSendFrame(unsigned long id, unsigned char len,
+                    const unsigned char* buf, bool wait_sent = true) {
+    // call parent CANSendFrame
+    return tNMEA2000_esp32::CANSendFrame(id, len, buf, wait_sent);
+  }
+
  protected:
   bool CANGetFrame(unsigned long& id, unsigned char& len, unsigned char* buf);
 

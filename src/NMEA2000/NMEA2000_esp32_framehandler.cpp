@@ -31,9 +31,10 @@ bool tNMEA2000_esp32_FH::CANGetFrame(unsigned long &id, unsigned char &len,
  * @param len
  * @param buf
  */
-void tNMEA2000_esp32_FH::RunCANFrameHandlers(bool &hasFrame, unsigned long &canId,
-                                          unsigned char &len,
-                                          unsigned char *buf) {
+void tNMEA2000_esp32_FH::RunCANFrameHandlers(bool &hasFrame,
+                                             unsigned long &canId,
+                                             unsigned char &len,
+                                             unsigned char *buf) {
   if (CANFrameHandler != NULL) {
     CANFrameHandler(hasFrame, canId, len, buf);
   }
