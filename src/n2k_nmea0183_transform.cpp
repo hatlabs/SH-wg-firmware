@@ -181,8 +181,8 @@ void N2KTo0183Transform::invalidate_old_data() {
     longitude_ = NMEA0183DoubleNA;
   }
   if (last_wind_elapsed_ > 2000) {
-    wind_speed_ = N2kDoubleNA;
-    wind_angle_ = N2kDoubleNA;
+    wind_speed_ = NMEA0183DoubleNA;
+    wind_angle_ = NMEA0183DoubleNA;
   }
 }
 

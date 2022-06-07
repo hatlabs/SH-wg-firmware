@@ -30,15 +30,15 @@ class N2KTo0183Transform : public Transform<tN2kMsg, String> {
   static const unsigned int kMaxNMEA0183MessageSize_ = 164;
 
   // containers for last known values
-  double latitude_;
-  double longitude_;
-  double altitude_;
-  double variation_;
-  double heading_;
-  double cog_;
-  double sog_;
-  double wind_speed_;
-  double wind_angle_;
+  double latitude_ = NMEA0183DoubleNA;
+  double longitude_ = NMEA0183DoubleNA;
+  double altitude_ = NMEA0183DoubleNA;
+  double variation_ = NMEA0183DoubleNA;
+  double heading_ = NMEA0183DoubleNA;
+  double cog_ = NMEA0183DoubleNA;
+  double sog_ = NMEA0183DoubleNA;
+  double wind_speed_ = NMEA0183DoubleNA;
+  double wind_angle_ = NMEA0183DoubleNA;
 
   uint16_t days_since_1970_;
   double seconds_since_midnight_;

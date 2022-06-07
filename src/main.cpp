@@ -270,11 +270,11 @@ static void SetupTransmitters() {
         return raw_string;
       });
 
-  // auto n2k_to_0183_transform = new N2KTo0183Transform();
+  auto n2k_to_0183_transform = new N2KTo0183Transform();
   auto n2k_to_seasmart_transform = new SeasmartTransform();
   // the message handler called within this consumer will write its output
   // to nmea0183_msg_observable
-  // n2k_msg_input.connect_to(n2k_to_0183_transform);
+  n2k_msg_input.connect_to(n2k_to_0183_transform);
   n2k_msg_input.connect_to(n2k_to_seasmart_transform);
 
   seasmart_tcp_server =
@@ -288,8 +288,8 @@ static void SetupTransmitters() {
       new StreamingUDPServer(kYdwgRawUDPServerPort, networking);
 
   // send the generated NMEA 0183 message
-  // n2k_to_0183_transform->connect_to(seasmart_tcp_server);
-  // n2k_to_0183_transform->connect_to(seasmart_udp_server);
+  n2k_to_0183_transform->connect_to(seasmart_tcp_server);
+  n2k_to_0183_transform->connect_to(seasmart_udp_server);
 
   // send the generated SeaSmart message
   n2k_to_seasmart_transform->connect_to(seasmart_tcp_server);
