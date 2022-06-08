@@ -101,7 +101,7 @@ UILambdaOutput<String> ui_output_mac_address = UILambdaOutput<String>(
 UILambdaOutput<String> ui_output_wifi_ssid = UILambdaOutput<String>(
     "SSID", []() { return WiFi.SSID(); }, "WiFi", 230);
 UILambdaOutput<int8_t> ui_output_wifi_rssi = UILambdaOutput<int8_t>(
-    "WiFi signal strength", []() { return WiFi.RSSI(); }, "WiFi", 240);
+    "WiFi signal strength (dB)", []() { return WiFi.RSSI(); }, "WiFi", 240);
 
 uint32_t can_frame_rx_counter = 0;
 uint32_t can_frame_tx_counter = 0;
