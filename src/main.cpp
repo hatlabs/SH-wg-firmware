@@ -85,33 +85,37 @@ CheckboxConfig *checkbox_config_translate_to_nmea0183;
 PortConfig *port_config_nmea0183_tcp_tx;
 PortConfig *port_config_nmea0183_udp_tx;
 
-UIOutput<String> ui_output_firmware_name("Firmware name", kFirmwareName);
+UIOutput<String> ui_output_firmware_name("Firmware name", kFirmwareName,
+                                         "Firmware", 100);
 UIOutput<String> ui_output_firmware_version("Firmware version",
-                                            kFirmwareVersion);
-UILambdaOutput<int> ui_output_uptime("Uptime",
-                                     []() { return millis() / 1000; });
+                                            kFirmwareVersion, "Firmware", 110);
+UIOutput<String> ui_output_build_info =
+    UIOutput<String>("Built at", __DATE__ " " __TIME__, "Firmware", 120);
+
+UILambdaOutput<String> ui_output_hostname = UILambdaOutput<String>(
+    "Hostname", []() { return sensesp_app->get_hostname(); }, "WiFi", 200);
+UILambdaOutput<String> ui_output_ip_address = UILambdaOutput<String>(
+    "IP address", []() { return WiFi.localIP().toString(); }, "WiFi", 210);
+UILambdaOutput<String> ui_output_mac_address = UILambdaOutput<String>(
+    "MAC", []() { return WiFi.macAddress(); }, "WiFi", 220);
+UILambdaOutput<String> ui_output_wifi_ssid = UILambdaOutput<String>(
+    "SSID", []() { return WiFi.SSID(); }, "WiFi", 230);
+UILambdaOutput<int8_t> ui_output_wifi_rssi = UILambdaOutput<int8_t>(
+    "WiFi signal strength", []() { return WiFi.RSSI(); }, "WiFi", 240);
 
 uint32_t can_frame_rx_counter = 0;
 uint32_t can_frame_tx_counter = 0;
 
 UILambdaOutput<uint32_t> ui_output_can_frame_rx_counter(
-    "CAN frame RX counter", []() { return can_frame_rx_counter; });
+    "CAN frame RX counter", []() { return can_frame_rx_counter; }, "NMEA 2000",
+    300);
 
 UILambdaOutput<uint32_t> ui_output_can_frame_tx_counter(
-    "CAN frame TX counter", []() { return can_frame_tx_counter; });
+    "CAN frame TX counter", []() { return can_frame_tx_counter; }, "NMEA 2000",
+    310);
 
-UIOutput<String> ui_output_build_info =
-    UIOutput<String>("Built at", __DATE__ " " __TIME__);
-UILambdaOutput<String> ui_output_hostname = UILambdaOutput<String>(
-    "Hostname", []() { return sensesp_app->get_hostname(); });
-UILambdaOutput<String> ui_output_ip_address = UILambdaOutput<String>(
-    "IP address", []() { return WiFi.localIP().toString(); });
-UILambdaOutput<String> ui_output_mac_address =
-    UILambdaOutput<String>("MAC", []() { return WiFi.macAddress(); });
-UILambdaOutput<String> ui_output_wifi_ssid =
-    UILambdaOutput<String>("SSID", []() { return WiFi.SSID(); });
-UILambdaOutput<int8_t> ui_output_wifi_rssi = UILambdaOutput<int8_t>(
-    "WiFi signal strength", []() { return WiFi.RSSI(); });
+UILambdaOutput<int> ui_output_uptime(
+    "Uptime", []() { return millis() / 1000; }, "Runtime", 400);
 
 int led_state = -1;
 
@@ -522,7 +526,7 @@ void setup() {
   });
 
   // Handle incoming NMEA 2000 messages
-  app.onRepeat(1, []() { nmea2000->ParseMessages(); });
+  app.onRepeatMicros(50, []() { nmea2000->ParseMessages(); });
 
   // app.onAvailable(Serial, []() {
   //   // Flush the incoming serial buffer
