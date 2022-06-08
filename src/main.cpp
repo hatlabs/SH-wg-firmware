@@ -526,7 +526,7 @@ void setup() {
   });
 
   // Handle incoming NMEA 2000 messages
-  app.onRepeat(1, []() { nmea2000->ParseMessages(); });
+  app.onRepeatMicros(50, []() { nmea2000->ParseMessages(); });
 
   // app.onAvailable(Serial, []() {
   //   // Flush the incoming serial buffer
