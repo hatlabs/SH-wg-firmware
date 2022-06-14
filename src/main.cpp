@@ -58,6 +58,11 @@ const unsigned long ReceiveMessages[] PROGMEM = {
     129026L,      // COG and SOG
     129029L,      // GNSS
     130306L,      // Wind
+    129038L,      // AIS Class A Position Report, Message Type 1
+    129039L,      // AIS Class B Position Report, Message Type 18
+    12979UL,  // AIS Class A Ship Static and Voyage related data, Message Type 5
+    129809L,  // AIS Class B "CS" Static Data Report, Part A
+    129810L,  // AIS Class B "CS" Static Data Report, Part B
     0};
 
 tNMEA2000_esp32_FH *nmea2000;
@@ -438,7 +443,6 @@ void SetupUIComponents() {
       true, kDefaultNMEA0183UDPServerPort, "/Network/NMEA 0183 over UDP",
       "Broadcast NMEA 0183 and SeaSmart.Net data over UDP.", 1900);
 }
-
 
 // The setup function performs one-time application initialization.
 void setup() {

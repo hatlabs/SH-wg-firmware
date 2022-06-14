@@ -1,6 +1,7 @@
 #include "n2k_nmea0183_transform.h"
 
 #include <N2kMessages.h>
+#include <NMEA0183AISMessages.h>
 #include <NMEA0183Messages.h>
 
 const double kPi = 3.14159265358979323846;
@@ -32,6 +33,21 @@ void N2KTo0183Transform::set_input(tN2kMsg new_value, uint8_t input_channel) {
       break;
     case 130306:
       handle_wind(new_value);
+      break;
+    case 129038:  // AIS Class A Position Report
+      handle_class_a_ais_position(new_value);
+      break;
+    case 129039:  // AIS Class B Position Report
+      handle_class_b_ais_position(new_value);
+      break;
+    case 129794:  // AIS Class A Static and Voyage Related Data
+      handle_class_a_ais_static_and_voyage_related_data(new_value);
+      break;
+    case 129809:  // AIS Class B CS Static Data Report Part A
+      handle_class_b_ais_cs_static_data_report_part_a(new_value);
+      break;
+    case 129810:  // AIS Class B CS Static Data Report Part B
+      handle_class_b_ais_cs_static_data_report_part_b(new_value);
       break;
     default:
       break;
@@ -164,6 +180,152 @@ void N2KTo0183Transform::handle_wind(const tN2kMsg& msg) {
     if (NMEA0183SetMWV(nmea0183_msg, wind_angle_ * rad_to_deg,
                        nmea0183_reference, wind_speed_)) {
       emit_0183_string(nmea0183_msg);
+    }
+  }
+}
+
+// NMEA 2000 AIS message conversion functions stolen from
+// https://github.com/ronzeiller/NMEA0183-AIS
+
+void N2KTo0183Transform::handle_class_a_ais_position(const tN2kMsg& msg) {
+  unsigned char SID;
+  uint8_t message_id;
+  tN2kAISRepeat repeat;
+  uint32_t user_id;  // MMSI
+  double latitude;
+  double longitude;
+  bool accuracy;
+  bool raim;
+  uint8_t seconds;
+  double cog;
+  double sog;
+  double heading;
+  double rot;
+  tN2kAISNavStatus nav_status;
+
+  uint8_t message_type = 1;
+  tNMEA0183AISMsg nmea_0183_ais_msg;
+
+  if (ParseN2kPGN129038(msg, message_id, repeat, user_id, latitude, longitude,
+                        accuracy, raim, seconds, cog, sog, heading, rot,
+                        nav_status)) {
+    if (SetAISClassABMessage1(nmea_0183_ais_msg, message_type, repeat, user_id,
+                              latitude, longitude, accuracy, raim, seconds, cog,
+                              sog, heading, rot, nav_status)) {
+      emit_0183_string(nmea_0183_ais_msg);
+    }
+  }
+}
+
+void N2KTo0183Transform::handle_class_b_ais_position(const tN2kMsg& msg) {
+  uint8_t message_id;
+  tN2kAISRepeat repeat;
+  uint32_t user_id;  // MMSI
+  double latitude;
+  double longitude;
+  bool accuracy;
+  bool raim;
+  uint8_t seconds;
+  double cog;
+  double sog;
+  tN2kAISTransceiverInformation ais_transceiver_information;
+  double heading;
+  tN2kAISUnit unit;
+  bool display, dsc, band, msg22, state;
+  tN2kAISMode mode;
+
+  if (ParseN2kPGN129039(msg, message_id, repeat, user_id, latitude, longitude,
+                        accuracy, raim, seconds, cog, sog,
+                        ais_transceiver_information, heading, unit, display,
+                        dsc, band, msg22, mode, state)) {
+    tNMEA0183AISMsg nmea_0183_ais_msg;
+
+    if (SetAISClassBMessage18(nmea_0183_ais_msg, message_id, repeat, user_id,
+                              latitude, longitude, accuracy, raim, seconds, cog,
+                              sog, heading, unit, display, dsc, band, msg22,
+                              mode, state)) {
+      emit_0183_string(nmea_0183_ais_msg);
+    }
+  }
+}
+
+void N2KTo0183Transform::handle_class_a_ais_static_and_voyage_related_data(
+    const tN2kMsg& msg) {
+  uint8_t message_id;
+  tN2kAISRepeat repeat;
+  uint32_t user_id;  // MMSI
+  uint32_t imo_number;
+  char callsign[8];
+  char name[21];
+  uint8_t vessel_type;
+  double length;
+  double beam;
+  double pos_ref_stbd;
+  double pos_ref_bow;
+  uint16_t eta_date;
+  double eta_time;
+  double draught;
+  char destination[21];
+  tN2kAISVersion ais_version;
+  tN2kGNSStype gnss_type;
+  tN2kAISTranceiverInfo ais_info;
+  tN2kAISDTE dte;
+
+  tNMEA0183AISMsg nmea_0183_ais_msg;
+
+  if (ParseN2kPGN129794(msg, message_id, repeat, user_id, imo_number, callsign,
+                        name, vessel_type, length, beam, pos_ref_stbd,
+                        pos_ref_bow, eta_date, eta_time, draught, destination,
+                        ais_version, gnss_type, dte, ais_info)) {
+    if (SetAISClassAMessage5(nmea_0183_ais_msg, message_id, repeat, user_id,
+                             imo_number, callsign, name, vessel_type, length,
+                             beam, pos_ref_stbd, pos_ref_bow, eta_date,
+                             eta_time, draught, destination, gnss_type, dte)) {
+      emit_0183_string(nmea_0183_ais_msg.BuildMsg5Part1(nmea_0183_ais_msg));
+      emit_0183_string(nmea_0183_ais_msg.BuildMsg5Part2(nmea_0183_ais_msg));
+    }
+  }
+}
+
+void N2KTo0183Transform::handle_class_b_ais_cs_static_data_report_part_a(
+    const tN2kMsg& msg) {
+  uint8_t message_id;
+  tN2kAISRepeat repeat;
+  uint32_t user_id;  // MMSI
+  char name[21];
+
+  if (ParseN2kPGN129809(msg, message_id, repeat, user_id, name)) {
+    tNMEA0183AISMsg nmea_0183_ais_msg;
+    // data is stored in a vector to be transmitted when part B arrives
+    if (SetAISClassBMessage24PartA(nmea_0183_ais_msg, message_id, repeat,
+                                   user_id, name)) {
+    }
+  }
+}
+
+void N2KTo0183Transform::handle_class_b_ais_cs_static_data_report_part_b(
+    const tN2kMsg& msg) {
+  uint8_t message_id;
+  tN2kAISRepeat repeat;
+  uint32_t user_id, mothership_id;  // MMSI
+  char callsign[8];
+  char vendor[4];
+  uint8_t vessel_type;
+  double length;
+  double beam;
+  double pos_ref_stbd;
+  double pos_ref_bow;
+
+  if (ParseN2kPGN129810(msg, message_id, repeat, user_id, vessel_type, vendor,
+                        callsign, length, beam, pos_ref_stbd, pos_ref_bow,
+                        mothership_id)) {
+    tNMEA0183AISMsg nmea_0183_ais_msg;
+
+    if (SetAISClassBMessage24(nmea_0183_ais_msg, message_id, repeat, user_id,
+                              vessel_type, vendor, callsign, length, beam,
+                              pos_ref_stbd, pos_ref_bow, mothership_id)) {
+      emit_0183_string(nmea_0183_ais_msg.BuildMsg24PartA(nmea_0183_ais_msg));
+      emit_0183_string(nmea_0183_ais_msg.BuildMsg24PartB(nmea_0183_ais_msg));
     }
   }
 }
