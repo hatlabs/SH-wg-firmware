@@ -20,6 +20,7 @@
 #include "Seasmart.h"
 #include "can_frame.h"
 #include "config.h"
+#include "filter_transform.h"
 #include "firmware_info.h"
 #include "n2k_nmea0183_transform.h"
 #include "ota_update_task.h"
@@ -384,9 +385,24 @@ static void SetupTransmitters() {
         ->connect_to(new LambdaConsumer<CANFrame>([](CANFrame frame) {
           // debugD("Sending CAN Frame with ID %d and length %d", frame.id,
           // frame.len);
+          if (frame.origin == CANFrameOrigin::kRemoteApp) {
+            // Ignore YDWG RAW messages with 'T' direction
+            return;
+          }
           can_frame_tx_counter++;
           nmea2000->CANSendFrame(frame.id, frame.len, frame.buf);
         }));
+    // Frames originating from YDWG RAW Application messages should be resent
+    // as 'T' direction YDWG RAW messages
+    ydwg_raw_to_can_transform
+        ->connect_to(new Filter<CANFrame>([](CANFrame frame) {
+          if (frame.origin == CANFrameOrigin::kApp) {
+            return true;
+          } else {
+            return false;
+          }
+        }))
+        ->connect_to(can_to_ydwg_transform);
   }
 }
 
