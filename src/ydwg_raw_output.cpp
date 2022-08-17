@@ -18,7 +18,9 @@ String CANFrameToYDWGRaw(const CANFrame& frame, struct timeval& timestamp) {
   // replace the final space with a zero
   buffer[3*frame.len - 1] = '\0';
 
-  String out = time_str + "R " + can_id_str + buffer + "\r\n";
+  char direction = frame.origin == CANFrameOrigin::kApp ? 'T' : 'R';
+
+  String out = time_str + direction + " " + can_id_str + buffer + "\r\n";
 
   return out;
 }
