@@ -231,6 +231,7 @@ void InitNMEA2000() {
       frame.id = can_id;
       frame.len = len;
       memcpy(frame.buf, buf, len);
+      frame.origin = CANFrameOrigin::kLocal;
       can_frame_input.set(frame);
     }
   });
