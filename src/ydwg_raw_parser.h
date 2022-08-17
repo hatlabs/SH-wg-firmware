@@ -10,7 +10,7 @@
 
 using namespace sensesp;
 
-bool YDWGRawToCANFrame(CANFrame& frame, char& direction,
+bool YDWGRawToCANFrame(CANFrame& frame,
                        struct timeval& timestamp, const String& ydwg_raw);
 
 class YDWGRawToCANFrameTransform : public Transform<String, CANFrame> {
@@ -21,7 +21,7 @@ class YDWGRawToCANFrameTransform : public Transform<String, CANFrame> {
     CANFrame frame;
     char direction;
     struct timeval timestamp;
-    if (YDWGRawToCANFrame(frame, direction, timestamp, ydwg_raw_str)) {
+    if (YDWGRawToCANFrame(frame, timestamp, ydwg_raw_str)) {
       emit(frame);
     } else {
       debugW("YDWG RAW string parsing failed: %s", ydwg_raw_str.c_str());
