@@ -390,7 +390,22 @@ static void SetupTransmitters() {
             return;
           }
           can_frame_tx_counter++;
+          if (frame.origin == CANFrameOrigin::kApp) {
+            // Application format messages need to have their source address
+            // replaced with our own source address.
+
+            unsigned char our_source = nmea2000->GetN2kSource(0);
+            uint32_t frame_id = frame.id;
+            // clear existing source address
+            frame_id &= ~0xFF;
+            // set new source address
+            frame_id |= our_source;
+
+            frame.id = frame_id;
+          }
           nmea2000->CANSendFrame(frame.id, frame.len, frame.buf);
+
+
         }));
     // Frames originating from YDWG RAW Application messages should be resent
     // as 'T' direction YDWG RAW messages
