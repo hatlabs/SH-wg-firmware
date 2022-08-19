@@ -19,7 +19,6 @@ def send_data(data, ip_addrs, port):
     for ip_addr in ip_addrs:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)  # UDP
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        sock.bind((ip_addr, 2002))
         sock.sendto(data, ("255.255.255.255", port))
         sock.close()
 
