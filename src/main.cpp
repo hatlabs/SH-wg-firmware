@@ -37,6 +37,7 @@
 #include "shwg_factory_test.h"
 #include "streaming_tcp_server.h"
 #include "streaming_udp_server.h"
+#include "stringtokenizer_transform.h"
 #include "time_string.h"
 #include "ui_controls.h"
 #include "ydwg_raw_output.h"
@@ -381,7 +382,8 @@ static void SetupTransmitters() {
 
   if (port_config_ydwg_raw_udp->get_rx_enabled()) {
     debugD("Connecting YDWG RAW RX to CAN TX");
-    ydwg_raw_udp_server->connect_to(ydwg_raw_to_can_transform)
+    ydwg_raw_udp_server->connect_to(new StringTokenizer("\r\n"))
+        ->connect_to(ydwg_raw_to_can_transform)
         ->connect_to(new LambdaConsumer<CANFrame>([](CANFrame frame) {
           // debugD("Sending CAN Frame with ID %d and length %d", frame.id,
           // frame.len);
@@ -404,8 +406,6 @@ static void SetupTransmitters() {
             frame.id = frame_id;
           }
           nmea2000->CANSendFrame(frame.id, frame.len, frame.buf);
-
-
         }));
     // Frames originating from YDWG RAW Application messages should be resent
     // as 'T' direction YDWG RAW messages
