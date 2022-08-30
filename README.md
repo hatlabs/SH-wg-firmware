@@ -65,7 +65,7 @@ The device is visible on the computer's WiFi network listing:
 <img src="media/wifi_selection.jpg" width="40%" />
 
 The network name is "Configure sh-wg-xxxxxxxxxxxx", the last 12 digits corresponding to the device unique identifier.
-You also need to provide a password to connect to the configuration portal. The password is "thisisfine".
+You also need to provide a password to connect to the configuration portal. The password is "abcdabcd".
 
 Once you have successfully connected to the configuration portal, you should be automatically presented with the WiFi configuration front page:
 

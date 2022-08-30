@@ -506,7 +506,8 @@ void setup() {
   SetupUIComponents();
 
   networking = new Networking("/System/WiFi Settings", "", "",
-                              SensESPBaseApp::get_hostname(), "thisisfine");
+                              SensESPBaseApp::get_hostname(),
+                              kWiFiCaptivePortalPassword);
 
   networking->set_wifi_manager_ap_ssid(String("Configure SH-wg ") + mac_str);
 
