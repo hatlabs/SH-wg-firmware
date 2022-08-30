@@ -436,6 +436,16 @@ String MacAddrToString(uint8_t *mac, bool add_colons) {
   return mac_string;
 }
 
+void PrintProductInfo() {
+  uint8_t mac[6];
+  WiFi.macAddress(mac);
+  String mac_str = MacAddrToString(mac);
+
+  Serial.println("***** Product Info *****");
+  Serial.printf("%s %s %s\n", kFirmwareName, kFirmwareVersion, mac_str.c_str());
+  Serial.println("************************");
+}
+
 void SetupUIComponents() {
   checkbox_config_enable_firmware_updates = new CheckboxConfig(
       true, "Enable", "/System/Enable Firmware Updates",
@@ -489,6 +499,9 @@ void setup() {
     return;
   }
 
+  // Print product information on the serial port
+  PrintProductInfo();
+
   // Create a unique hostname for the device.
 
   uint8_t mac[6];
@@ -506,7 +519,8 @@ void setup() {
   SetupUIComponents();
 
   networking = new Networking("/System/WiFi Settings", "", "",
-                              SensESPBaseApp::get_hostname(), "thisisfine");
+                              SensESPBaseApp::get_hostname(),
+                              kWiFiCaptivePortalPassword);
 
   networking->set_wifi_manager_ap_ssid(String("Configure SH-wg ") + mac_str);
 

@@ -4,9 +4,9 @@
 #include "WiFi.h"
 #include "config.h"
 #include "elapsedMillis.h"
+#include "firmware_info.h"
 #include "sensesp.h"
 #include "shwg.h"
-#include "firmware_info.h"
 
 using namespace ace_button;
 using namespace sensesp;
@@ -76,18 +76,8 @@ static void PrepareWiFiNetworkScan() {
   app.onDelay(100, ScanWiFiNetworks);
 }
 
-static void PrintInfo() {
-  uint8_t mac[6];
-  WiFi.macAddress(mac);
-  String mac_str = MacAddrToString(mac);
-
-  Serial.println("***** Product Info *****");
-  Serial.printf("%s %s %s\n", kFirmwareName, kFirmwareVersion, mac_str.c_str());
-  Serial.println("************************");
-}
-
 static void HandleFactoryTestButtonEvent(AceButton* button, uint8_t event_type,
-                                  uint8_t button_state) {
+                                         uint8_t button_state) {
   digitalWrite(kRedLedPin, button_state);
   static elapsedMillis time_since_press_event;
 
@@ -101,7 +91,7 @@ static void HandleFactoryTestButtonEvent(AceButton* button, uint8_t event_type,
         debugD("Detected a long press");
         // stop yellow LED blinking and turn it on
         ledcWrite(kYellowPWMChannel, 255);
-        PrintInfo();
+        PrintProductInfo();
       }
       break;
   }

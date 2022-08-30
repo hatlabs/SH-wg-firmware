@@ -35,5 +35,7 @@ constexpr unsigned long kTimeUpdatePeriodMs = 3600 * 1000;
 static constexpr int kDelayBetweenFirmwareUpdateChecksMs =
     60 * 60 * 1000;  // 1 hour
 
+// WiFi captive portal password
+constexpr char kWiFiCaptivePortalPassword[] = "abcdabcd";
 
 #endif // SH_WG_CONFIG_H_
