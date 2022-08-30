@@ -76,7 +76,7 @@ static void PrepareWiFiNetworkScan() {
   app.onDelay(100, ScanWiFiNetworks);
 }
 
-static void PrintInfo() {
+static void PrintProductInfo() {
   uint8_t mac[6];
   WiFi.macAddress(mac);
   String mac_str = MacAddrToString(mac);
@@ -101,7 +101,7 @@ static void HandleFactoryTestButtonEvent(AceButton* button, uint8_t event_type,
         debugD("Detected a long press");
         // stop yellow LED blinking and turn it on
         ledcWrite(kYellowPWMChannel, 255);
-        PrintInfo();
+        PrintProductInfo();
       }
       break;
   }
