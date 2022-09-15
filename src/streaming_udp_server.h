@@ -22,8 +22,10 @@ class StreamingUDPServer : public ValueProducer<String>,
 
   void set_input(String new_value, uint8_t input_channel = 0) override {
     if (connected_) {
-      String str_nl = new_value;
-      async_udp_.broadcast(str_nl.c_str());
+      size_t len_sent = async_udp_.broadcast(new_value.c_str());
+      if (len_sent == 0) {
+          debugW("UDP broadcast failed: %s", new_value.c_str());
+      }
     }
   }
 
