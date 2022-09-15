@@ -124,6 +124,9 @@ UILambdaOutput<uint32_t> ui_output_can_frame_tx_counter(
 UILambdaOutput<int> ui_output_uptime(
     "Uptime", []() { return millis() / 1000; }, "Runtime", 400);
 
+UILambdaOutput<int> ui_output_free_heap(
+    "Free memory", []() { return ESP.getFreeHeap(); }, "Runtime", 410);
+
 int led_state = -1;
 
 uint32_t GetBoardSerialNumber() {
