@@ -263,8 +263,13 @@ static void SetupBlueLEDBlinker() {
             break;
           case WiFiState::kWifiManagerActivated:
             ledcAttachPin(kBlueLedPin, kBluePWMChannel);
-            // blink the blue LED at 2 Hz and 25% duty cycle
-            ledcWrite(kBluePWMChannel, 64);
+            // blink the blue LED at 2 Hz and 12.5% duty cycle
+            ledcWrite(kBluePWMChannel, 65536 / 8);
+            break;
+          case WiFiState::kWifiAPModeActivated:
+            ledcAttachPin(kBlueLedPin, kBluePWMChannel);
+            // blink the blue LED at 2 Hz and 87.5% duty cycle
+            ledcWrite(kBluePWMChannel, 65536 * 7 / 8);
             break;
           default:
             digitalWrite(kBlueLedPin, LOW);
