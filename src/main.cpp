@@ -20,6 +20,7 @@
 #include "Seasmart.h"
 #include "can_frame.h"
 #include "config.h"
+#include "concatenate_strings.h"
 #include "filter_transform.h"
 #include "firmware_info.h"
 #include "n2k_nmea0183_transform.h"
@@ -284,11 +285,11 @@ static void SetupBlueLEDBlinker() {
 }
 
 static void SetupYellowLEDBlinker(
-    LambdaTransform<CANFrame, String> *ydwg_transform) {
+    ValueProducer<String> *string_producer) {
   static int solid_on_pattern[] = {1000, 0, PATTERN_END};
   auto blinker = new PatternBlinker(kYellowLedPin, solid_on_pattern);
 
-  ydwg_transform->connect_to(
+  string_producer->connect_to(
       new LambdaConsumer<String>([blinker](const String &str) {
         if (WiFi.isConnected()) {
           blinker->blip(5);
@@ -305,9 +306,17 @@ static void SetupTransmitters() {
         return raw_string;
       });
 
+  auto concatenate_ydwg_strings = new ConcatenateStrings(100, 1000);
+  auto concatenate_n0183_strings = new ConcatenateStrings(100, 1000);
+
   auto n2k_to_0183_transform = new N2KTo0183Transform();
   auto n2k_to_seasmart_transform = new SeasmartTransform();
   auto ydwg_raw_to_can_transform = new YDWGRawToCANFrameTransform();
+
+  can_to_ydwg_transform->connect_to(concatenate_ydwg_strings);
+
+  n2k_to_0183_transform->connect_to(concatenate_n0183_strings);
+  n2k_to_seasmart_transform->connect_to(concatenate_n0183_strings);
 
   // if configured, connect the N2K input to NMEA 0183 transform
 
@@ -360,7 +369,7 @@ static void SetupTransmitters() {
   if (checkbox_config_translate_to_nmea0183->get_value()) {
     debugD("Connecting NMEA 0183 to consumers");
     n2k_to_0183_transform->connect_to(nmea0183_tcp_server);
-    n2k_to_0183_transform->connect_to(nmea0183_udp_server);
+    concatenate_n0183_strings->connect_to(nmea0183_udp_server);
   }
 
   // send the generated SeaSmart message
@@ -382,7 +391,7 @@ static void SetupTransmitters() {
     debugD("Connecting YDWG raw to consumers");
     SetupYellowLEDBlinker(can_to_ydwg_transform);
 
-    can_to_ydwg_transform->connect_to(ydwg_raw_udp_server);
+    concatenate_ydwg_strings->connect_to(ydwg_raw_udp_server);
   }
   // ydwg_raw_udp_server->connect_to(new LambdaConsumer<String>(
   //   [](const String &str) { debugD("Received over UDP: %s", str.c_str());
