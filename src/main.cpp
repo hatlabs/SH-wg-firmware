@@ -46,8 +46,8 @@
 using namespace sensesp;
 
 // Set the information for other bus devices, which messages we support
-const unsigned long kTransmitMessages[] PROGMEM = {0};
-const unsigned long ReceiveMessages[] PROGMEM = {
+const unsigned long kTransmitMessages[] = {0};
+const unsigned long ReceiveMessages[] = {
     /*126992L,*/  // System time
     127250L,      // Heading
     127258L,      // Magnetic variation
