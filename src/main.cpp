@@ -18,12 +18,14 @@
 #include "NMEA2000/NMEA2000_esp32_framehandler.h"
 #include "NMEA2000_CAN.h"
 #include "can_frame.h"
-#include "config.h"
 #include "concatenate_strings.h"
+#include "config.h"
 #include "filter_transform.h"
 #include "firmware_info.h"
 #include "n2k_nmea0183_transform.h"
+#include "origin_string.h"
 #include "ota_update_task.h"
+#include "seasmart_transform.h"
 #include "sensesp/net/discovery.h"
 #include "sensesp/net/http_server.h"
 #include "sensesp/net/networking.h"
@@ -165,7 +167,11 @@ void SetSystemTime(const tN2kMsg &n2k_msg) {
 ObservableValue<tN2kMsg> n2k_msg_input;
 ObservableValue<CANFrame> can_frame_input;
 
+// All CAN frame producers and consumers connect to the clearinghouse
+LambdaTransform<CANFrame, CANFrame> *can_frame_clearinghouse;
 
+// Consumer that will send CAN frames to the NMEA 2000 bus
+LambdaConsumer<CANFrame> *can_frame_sender;
 
 void InitNMEA2000() {
   nmea2000->SetN2kCANMsgBufSize(8);
@@ -214,6 +220,7 @@ void InitNMEA2000() {
       frame.len = len;
       memcpy(frame.buf, buf, len);
       frame.origin_type = CANFrameOriginType::kLocal;
+      frame.origin_id = origin_id(nmea2000);
       can_frame_input.set(frame);
     }
   });
@@ -261,12 +268,12 @@ static void SetupBlueLEDBlinker() {
 }
 
 static void SetupYellowLEDBlinker(
-    ValueProducer<String> *string_producer) {
+    ValueProducer<OriginString> *string_producer) {
   static int solid_on_pattern[] = {1000, 0, PATTERN_END};
   auto blinker = new PatternBlinker(kYellowLedPin, solid_on_pattern);
 
   string_producer->connect_to(
-      new LambdaConsumer<String>([blinker](const String &str) {
+      new LambdaConsumer<OriginString>([blinker](const OriginString &str) {
         if (WiFi.isConnected()) {
           blinker->blip(5);
         }
@@ -274,12 +281,15 @@ static void SetupYellowLEDBlinker(
 }
 
 static void SetupTransmitters() {
+  can_frame_clearinghouse = new LambdaTransform<CANFrame, CANFrame>(
+      [](const CANFrame &frame) { return frame; });
+
   auto can_to_ydwg_transform =
-      new LambdaTransform<CANFrame, String>([](CANFrame frame) {
+      new LambdaTransform<CANFrame, OriginString>([](CANFrame frame) {
         struct timeval tv;
         gettimeofday(&tv, NULL);
-        String raw_string = CANFrameToYDWGRaw(frame, tv);
-        return raw_string;
+        OriginString origin_string = CANFrameToYDWGRaw(frame, tv);
+        return origin_string;
       });
 
   can_frame_sender = new LambdaConsumer<CANFrame>([](CANFrame frame) {
@@ -311,17 +321,21 @@ static void SetupTransmitters() {
     }
     nmea2000->CANSendFrame(frame.id, frame.len, frame.buf);
   });
+
   auto concatenate_ydwg_strings = new ConcatenateStrings(100, 1000);
   auto concatenate_n0183_strings = new ConcatenateStrings(100, 1000);
 
-  auto n2k_to_0183_transform = new N2KTo0183Transform();
-  auto n2k_to_seasmart_transform = new SeasmartTransform();
+  auto n2k_to_0183_transform = new N2KTo0183Transform(nmea2000);
+  auto n2k_to_seasmart_transform = new SeasmartTransform(nmea2000);
   auto ydwg_raw_to_can_transform = new YDWGRawToCANFrameTransform();
 
   can_to_ydwg_transform->connect_to(concatenate_ydwg_strings);
 
   n2k_to_0183_transform->connect_to(concatenate_n0183_strings);
   n2k_to_seasmart_transform->connect_to(concatenate_n0183_strings);
+
+  //////
+  // N2K message routing
 
   // if configured, connect the N2K input to NMEA 0183 transform
 
@@ -338,6 +352,13 @@ static void SetupTransmitters() {
     debugD("Connecting N2K to Seasmart");
     n2k_msg_input.connect_to(n2k_to_seasmart_transform);
   }
+
+  //////
+  // CAN frame routing
+
+  can_frame_input.connect_to(can_frame_clearinghouse);
+  can_frame_clearinghouse->connect_to(can_frame_sender);
+  ydwg_raw_to_can_transform->connect_to(can_frame_sender);
 
   // set up the YDWG RAW TCP server
 
@@ -386,7 +407,7 @@ static void SetupTransmitters() {
 
   // connect the CAN frame input to the YDWG raw transform
   debugD("Connecting CAN input to YDWG raw transform");
-  can_frame_input.connect_to(can_to_ydwg_transform);
+  can_frame_clearinghouse->connect_to(can_to_ydwg_transform);
 
   if (port_config_ydwg_raw_tcp_tx->get_enabled()) {
     can_to_ydwg_transform->connect_to(ydwg_raw_tcp_server);
@@ -405,10 +426,11 @@ static void SetupTransmitters() {
   if (port_config_ydwg_raw_udp->get_rx_enabled()) {
     debugD("Connecting YDWG RAW RX to CAN TX");
     ydwg_raw_udp_server->connect_to(new StringTokenizer("\r\n"))
+        ->connect_to(ydwg_raw_to_can_transform);
 
     // Frames originating from YDWG RAW Application messages should be resent
     // as 'T' direction YDWG RAW messages
-    ydwg_raw_to_can_transform
+    can_frame_clearinghouse
         ->connect_to(new Filter<CANFrame>([](CANFrame frame) {
           if (frame.origin_type == CANFrameOriginType::kApp) {
             return true;
