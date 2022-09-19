@@ -282,6 +282,35 @@ static void SetupTransmitters() {
         return raw_string;
       });
 
+  can_frame_sender = new LambdaConsumer<CANFrame>([](CANFrame frame) {
+    // debugD("Sending CAN Frame with ID %d and length %d", frame.id,
+    // frame.len);
+
+    if (frame.origin_id == origin_id(nmea2000)) {
+      // ignore frames that we just received
+      return;
+    }
+
+    if (frame.origin_type == CANFrameOriginType::kRemoteApp) {
+      // Ignore YDWG RAW messages with 'T' direction
+      return;
+    }
+    can_frame_tx_counter++;
+    if (frame.origin_type == CANFrameOriginType::kApp) {
+      // Application format messages need to have their source address
+      // replaced with our own source address.
+
+      unsigned char our_source = nmea2000->GetN2kSource(0);
+      uint32_t frame_id = frame.id;
+      // clear existing source address
+      frame_id &= ~0xFF;
+      // set new source address
+      frame_id |= our_source;
+
+      frame.id = frame_id;
+    }
+    nmea2000->CANSendFrame(frame.id, frame.len, frame.buf);
+  });
   auto concatenate_ydwg_strings = new ConcatenateStrings(100, 1000);
   auto concatenate_n0183_strings = new ConcatenateStrings(100, 1000);
 
@@ -376,30 +405,7 @@ static void SetupTransmitters() {
   if (port_config_ydwg_raw_udp->get_rx_enabled()) {
     debugD("Connecting YDWG RAW RX to CAN TX");
     ydwg_raw_udp_server->connect_to(new StringTokenizer("\r\n"))
-        ->connect_to(ydwg_raw_to_can_transform)
-        ->connect_to(new LambdaConsumer<CANFrame>([](CANFrame frame) {
-          // debugD("Sending CAN Frame with ID %d and length %d", frame.id,
-          // frame.len);
-          if (frame.origin == CANFrameOrigin::kRemoteApp) {
-            // Ignore YDWG RAW messages with 'T' direction
-            return;
-          }
-          can_frame_tx_counter++;
-          if (frame.origin == CANFrameOrigin::kApp) {
-            // Application format messages need to have their source address
-            // replaced with our own source address.
 
-            unsigned char our_source = nmea2000->GetN2kSource(0);
-            uint32_t frame_id = frame.id;
-            // clear existing source address
-            frame_id &= ~0xFF;
-            // set new source address
-            frame_id |= our_source;
-
-            frame.id = frame_id;
-          }
-          nmea2000->CANSendFrame(frame.id, frame.len, frame.buf);
-        }));
     // Frames originating from YDWG RAW Application messages should be resent
     // as 'T' direction YDWG RAW messages
     ydwg_raw_to_can_transform
