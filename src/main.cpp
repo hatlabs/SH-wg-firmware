@@ -237,7 +237,7 @@ void InitNMEA2000() {
       frame.id = can_id;
       frame.len = len;
       memcpy(frame.buf, buf, len);
-      frame.origin = CANFrameOrigin::kLocal;
+      frame.origin_type = CANFrameOriginType::kLocal;
       can_frame_input.set(frame);
     }
   });
@@ -428,7 +428,7 @@ static void SetupTransmitters() {
     // as 'T' direction YDWG RAW messages
     ydwg_raw_to_can_transform
         ->connect_to(new Filter<CANFrame>([](CANFrame frame) {
-          if (frame.origin == CANFrameOrigin::kApp) {
+          if (frame.origin_type == CANFrameOriginType::kApp) {
             return true;
           } else {
             return false;
