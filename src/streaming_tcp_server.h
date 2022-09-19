@@ -7,6 +7,7 @@
 #include <list>
 #include <memory>
 
+#include "origin_string.h"
 #include "sensesp/net/networking.h"
 #include "sensesp/system/lambda_consumer.h"
 #include "sensesp/system/valueconsumer.h"
@@ -18,6 +19,7 @@ const size_t kMaxClients = 10;
 using WiFiClientPtr = std::shared_ptr<WiFiClient>;
 
 class StreamingTCPServer : public ValueConsumer<String>, public Startable {
+                           public ValueConsumer<OriginString>,
  public:
   StreamingTCPServer(const uint16_t port, Networking *networking)
       : Startable(50), networking_{networking}, port_{port} {
@@ -35,8 +37,8 @@ class StreamingTCPServer : public ValueConsumer<String>, public Startable {
     }
   }
 
-  void set_input(String new_value, uint8_t input_channel = 0) override {
-    send_buf(new_value.c_str());
+  void set_input(OriginString new_value, uint8_t input_channel = 0) override {
+    send_buf(new_value.data.c_str());
   }
 
   void set_enabled(bool enabled) { enabled_ = enabled; }
