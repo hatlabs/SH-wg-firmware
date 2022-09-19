@@ -17,7 +17,6 @@
 #include "N2kMessages.h"
 #include "NMEA2000/NMEA2000_esp32_framehandler.h"
 #include "NMEA2000_CAN.h"
-#include "Seasmart.h"
 #include "can_frame.h"
 #include "config.h"
 #include "concatenate_strings.h"
@@ -45,9 +44,6 @@
 #include "ydwg_raw_parser.h"
 
 using namespace sensesp;
-
-#define MAX_NMEA2000_MESSAGE_SEASMART_SIZE 500
-#define MAX_NMEA0183_MESSAGE_SIZE 200
 
 // Set the information for other bus devices, which messages we support
 const unsigned long kTransmitMessages[] PROGMEM = {0};
@@ -166,30 +162,10 @@ void SetSystemTime(const tN2kMsg &n2k_msg) {
   }
 }
 
-String GetSeaSmartString(const tN2kMsg &n2k_msg) {
-  char buf[MAX_NMEA2000_MESSAGE_SEASMART_SIZE];
-  if (N2kToSeasmart(n2k_msg, millis(), buf,
-                    MAX_NMEA2000_MESSAGE_SEASMART_SIZE) == 0) {
-    return "";
-  } else {
-    return String(buf) + "\r\n";
-  }
-}
-
 ObservableValue<tN2kMsg> n2k_msg_input;
 ObservableValue<CANFrame> can_frame_input;
 
-class SeasmartTransform : public Transform<tN2kMsg, String> {
- public:
-  SeasmartTransform() : Transform<tN2kMsg, String>() {}
 
-  void set_input(tN2kMsg input, uint8_t input_channel = 0) override {
-    String seasmart_str = GetSeaSmartString(input);
-    if (seasmart_str.length() > 0) {
-      this->emit(seasmart_str);
-    }
-  }
-};
 
 void InitNMEA2000() {
   nmea2000->SetN2kCANMsgBufSize(8);
