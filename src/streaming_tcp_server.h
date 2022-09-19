@@ -18,20 +18,24 @@ const size_t kMaxClients = 10;
 
 using WiFiClientPtr = std::shared_ptr<WiFiClient>;
 
-class StreamingTCPServer : public ValueConsumer<String>, public Startable {
+class StreamingTCPServer : public ValueProducer<OriginString>,
                            public ValueConsumer<OriginString>,
+                           public Startable {
  public:
   StreamingTCPServer(const uint16_t port, Networking *networking)
       : Startable(50), networking_{networking}, port_{port} {
     server_ = new WiFiServer(port);
 
-    ReactESP::app->onRepeat(1, [this]() { this->check_connections(); });
+    ReactESP::app->onRepeat(1, [this]() {
+      this->check_connections();
+      this->check_client_input();
+    });
   }
 
-  void send_buf(const char *buf) {
+  void send_buf(const char *buf, WiFiClientPtr exclude = nullptr) {
     // debugD("Sending: %s", buf);
     for (auto it = clients_.begin(); it != clients_.end(); it++) {
-      if ((*it) != NULL && (*it)->connected()) {
+      if ((*it) != NULL && (*it)->connected() && (*it) != exclude) {
         (*it)->print(buf);
       }
     }
@@ -77,7 +81,28 @@ class StreamingTCPServer : public ValueConsumer<String>, public Startable {
           stop_client(it);
         }
       } else {
+        debugD("Client did not get automatically erased");
         it = clients_.erase(it);  // Should have been erased by StopClient
+      }
+    }
+  }
+
+  void check_client_input() {
+    for (auto it = clients_.begin(); it != clients_.end(); it++) {
+      if ((*it) != NULL && (*it)->connected()) {
+        if ((*it)->available()) {
+
+          String input = (*it)->readString();
+
+          if (input.length() > 0) {
+            debugD("Received: %s", input.c_str());
+            OriginString origin_string = {origin_id(&(*it)), input};
+            this->emit(origin_string);
+            // this is a bit of a hack but immediately send the input to other
+            // clients
+            //send_buf(input.c_str(), *it);
+          }
+        }
       }
     }
   }
