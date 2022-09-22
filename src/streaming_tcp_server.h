@@ -11,13 +11,55 @@
 #include "sensesp/net/networking.h"
 #include "sensesp/system/lambda_consumer.h"
 #include "sensesp/system/valueconsumer.h"
+#include "shwg.h"
 
 using namespace sensesp;
 
-const size_t kMaxClients = 10;
+constexpr size_t kMaxClients = 10;
+constexpr size_t kRXBufferSize = 512;
 
 using WiFiClientPtr = std::shared_ptr<WiFiClient>;
 
+/**
+ * @brief TCP client connection container with RX buffer.
+ */
+class BufferedTCPClient {
+ public:
+  BufferedTCPClient(WiFiClientPtr client) : client_{client} {}
+
+  WiFiClientPtr client_;
+
+  int available() { return client_->available(); }
+
+  int read_line(String& line) {
+    while (client_->available()) {
+      char c = client_->read();
+      rx_buf_[rx_pos_++] = c;
+      if (rx_pos_ == kRXBufferSize-1) {
+        debugW("RX buffer overflow");
+        rx_pos_ = 0;
+      } else if (c == '\n') {
+        // received a full line
+        rx_buf_[rx_pos_] = '\0';
+        int received = rx_pos_;
+        rx_pos_ = 0;
+        line = rx_buf_;
+        return received;
+      }
+    }
+    return 0;
+  }
+
+ protected:
+  char rx_buf_[kRXBufferSize];
+  int rx_pos_ = 0;
+};
+
+/**
+ * @brief TCP server that is able to receive and transmit continuous data
+ * streams.
+ *
+ */
 class StreamingTCPServer : public ValueProducer<OriginString>,
                            public ValueConsumer<OriginString>,
                            public Startable {
@@ -26,23 +68,24 @@ class StreamingTCPServer : public ValueProducer<OriginString>,
       : Startable(50), networking_{networking}, port_{port} {
     server_ = new WiFiServer(port);
 
-    ReactESP::app->onRepeat(1, [this]() {
+    ReactESP::app->onRepeatMicros(100, [this]() {
       this->check_connections();
       this->check_client_input();
     });
   }
 
-  void send_buf(const char *buf, WiFiClientPtr exclude = nullptr) {
+  void send_buf(OriginString value) {
     // debugD("Sending: %s", buf);
     for (auto it = clients_.begin(); it != clients_.end(); it++) {
-      if ((*it) != NULL && (*it)->connected() && (*it) != exclude) {
-        (*it)->print(buf);
+      if ((*it).client_ != NULL && (*it).client_->connected() &&
+          value.origin_id != origin_id(&((*it).client_))) {
+        (*it).client_->write(value.data.c_str());
       }
     }
   }
 
   void set_input(OriginString new_value, uint8_t input_channel = 0) override {
-    send_buf(new_value.data.c_str());
+    send_buf(new_value);
   }
 
   void set_enabled(bool enabled) { enabled_ = enabled; }
@@ -54,16 +97,16 @@ class StreamingTCPServer : public ValueProducer<OriginString>,
 
   bool enabled_ = true;
 
-  std::list<WiFiClientPtr> clients_;
+  std::list<BufferedTCPClient> clients_;
 
   void add_client(WiFiClient &client) {
     debugD("New client connected");
-    clients_.push_back(WiFiClientPtr(new WiFiClient(client)));
+    clients_.push_back(BufferedTCPClient(WiFiClientPtr(new WiFiClient(client))));
   }
 
-  void stop_client(std::list<WiFiClientPtr>::iterator &it) {
+  void stop_client(std::list<BufferedTCPClient>::iterator &it) {
     debugD("Client disconnected");
-    (*it)->stop();
+    (*it).client_->stop();
     it = clients_.erase(it);
   }
 
@@ -76,12 +119,12 @@ class StreamingTCPServer : public ValueProducer<OriginString>,
     }
 
     for (auto it = clients_.begin(); it != clients_.end(); it++) {
-      if ((*it) != NULL) {
-        if (!(*it)->connected()) {
+      if ((*it).client_ != NULL) {
+        if (!(*it).client_->connected()) {
           stop_client(it);
         }
       } else {
-        debugD("Client did not get automatically erased");
+        debugW("Client did not get automatically erased");
         it = clients_.erase(it);  // Should have been erased by StopClient
       }
     }
@@ -89,19 +132,11 @@ class StreamingTCPServer : public ValueProducer<OriginString>,
 
   void check_client_input() {
     for (auto it = clients_.begin(); it != clients_.end(); it++) {
-      if ((*it) != NULL && (*it)->connected()) {
-        if ((*it)->available()) {
-
-          String input = (*it)->readString();
-
-          if (input.length() > 0) {
-            debugD("Received: %s", input.c_str());
-            OriginString origin_string = {origin_id(&(*it)), input};
-            this->emit(origin_string);
-            // this is a bit of a hack but immediately send the input to other
-            // clients
-            //send_buf(input.c_str(), *it);
-          }
+      if ((*it).client_ != NULL && (*it).client_->connected()) {
+        String line;
+        while ((*it).read_line(line)) {
+          OriginString value{origin_id(&((*it).client_)), line};
+          this->emit(value);
         }
       }
     }
