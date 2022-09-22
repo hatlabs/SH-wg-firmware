@@ -545,6 +545,14 @@ void setup() {
 
   networking->set_wifi_manager_ap_ssid(String("Configure SH-wg ") + mac_str);
 
+  networking->connect_to(new LambdaConsumer<WiFiState>([](WiFiState state) {
+    // turn of WiFi power saving when connected
+    if (state == WiFiState::kWifiConnectedToAP) {
+      debugD("Disabling WiFi power saving");
+      WiFi.setSleep(false);
+    }
+  }));
+
   // create the MDNS discovery object
   auto mdns_discovery_ = new MDNSDiscovery();
 
