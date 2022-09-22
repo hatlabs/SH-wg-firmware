@@ -60,8 +60,8 @@ class ConcatenateStrings : public Transform<OriginString, OriginString> {
    * @brief Check if the buffer has timed out and should be emitted.
    */
   void check_timeout() {
-    if (buf_input_time_ > max_delay_) {
-      if (output_.data.length() > 0) {
+    if (output_.data.length() > 0) {
+      if (buf_input_time_ > max_delay_) {
         emit(output_);
         output_ = {0, ""};
       }
