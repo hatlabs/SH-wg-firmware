@@ -84,7 +84,7 @@ SensESPMinimalApp *sensesp_app;
 Networking *networking;
 
 CheckboxConfig *checkbox_config_enable_firmware_updates;
-PortConfig *port_config_ydwg_raw_tcp_tx;
+BiDiPortConfig *port_config_ydwg_raw_tcp;
 BiDiPortConfig *port_config_ydwg_raw_udp;
 CheckboxConfig *checkbox_config_translate_to_seasmart;
 CheckboxConfig *checkbox_config_translate_to_nmea0183;
@@ -331,9 +331,6 @@ static void SetupTransmitters() {
 
   can_to_ydwg_transform->connect_to(concatenate_ydwg_strings);
 
-  n2k_to_0183_transform->connect_to(concatenate_n0183_strings);
-  n2k_to_seasmart_transform->connect_to(concatenate_n0183_strings);
-
   //////
   // N2K message routing
 
@@ -358,14 +355,17 @@ static void SetupTransmitters() {
 
   can_frame_input.connect_to(can_frame_clearinghouse);
   can_frame_clearinghouse->connect_to(can_frame_sender);
-  ydwg_raw_to_can_transform->connect_to(can_frame_sender);
+  ydwg_raw_to_can_transform->connect_to(can_frame_clearinghouse);
 
   // set up the YDWG RAW TCP server
 
   debugD("Setting up YDWG RAW TCP server");
-  int ydwg_raw_tcp_port = port_config_ydwg_raw_tcp_tx->get_port();
+  int ydwg_raw_tcp_port = port_config_ydwg_raw_tcp->get_port();
   ydwg_raw_tcp_server = new StreamingTCPServer(ydwg_raw_tcp_port, networking);
-  ydwg_raw_tcp_server->set_enabled(port_config_ydwg_raw_tcp_tx->get_enabled());
+  if (!port_config_ydwg_raw_tcp->get_tx_enabled() &&
+      !port_config_ydwg_raw_tcp->get_rx_enabled()) {
+    ydwg_raw_tcp_server->set_enabled(false);
+  }
 
   // set up the YDWG RAW UDP server
 
@@ -390,11 +390,13 @@ static void SetupTransmitters() {
   int nmea0183_udp_port = port_config_nmea0183_udp_tx->get_port();
   nmea0183_udp_server = new StreamingUDPServer(nmea0183_udp_port, networking);
   nmea0183_udp_server->set_enabled(port_config_nmea0183_udp_tx->get_enabled());
+  concatenate_n0183_strings->connect_to(nmea0183_udp_server);
 
   // send the generated NMEA 0183 message
   if (checkbox_config_translate_to_nmea0183->get_value()) {
     debugD("Connecting NMEA 0183 to consumers");
     n2k_to_0183_transform->connect_to(nmea0183_tcp_server);
+    n2k_to_0183_transform->connect_to(concatenate_n0183_strings);
     concatenate_n0183_strings->connect_to(nmea0183_udp_server);
   }
 
@@ -402,43 +404,35 @@ static void SetupTransmitters() {
   if (checkbox_config_translate_to_seasmart->get_value()) {
     debugD("Connecting Seasmart to consumers");
     n2k_to_seasmart_transform->connect_to(nmea0183_tcp_server);
-    n2k_to_seasmart_transform->connect_to(nmea0183_udp_server);
+    n2k_to_seasmart_transform->connect_to(concatenate_n0183_strings);
   }
 
   // connect the CAN frame input to the YDWG raw transform
   debugD("Connecting CAN input to YDWG raw transform");
   can_frame_clearinghouse->connect_to(can_to_ydwg_transform);
 
-  if (port_config_ydwg_raw_tcp_tx->get_enabled()) {
+  if (port_config_ydwg_raw_tcp->get_tx_enabled()) {
+    debugD("Connecting YDWG RAW TX to TCP server");
     can_to_ydwg_transform->connect_to(ydwg_raw_tcp_server);
   }
 
+  if (port_config_ydwg_raw_tcp->get_rx_enabled()) {
+    debugD("Connecting TCP server to YDWG RAW RX");
+    ydwg_raw_tcp_server->connect_to(ydwg_raw_to_can_transform);
+  }
+
   if (port_config_ydwg_raw_udp->get_tx_enabled()) {
-    debugD("Connecting YDWG raw to consumers");
+    debugD("Connecting YDWG RAW to UDP TX");
     SetupYellowLEDBlinker(can_to_ydwg_transform);
 
     concatenate_ydwg_strings->connect_to(ydwg_raw_udp_server);
   }
-  // ydwg_raw_udp_server->connect_to(new LambdaConsumer<String>(
-  //   [](const String &str) { debugD("Received over UDP: %s", str.c_str());
-  //   }));
 
   if (port_config_ydwg_raw_udp->get_rx_enabled()) {
-    debugD("Connecting YDWG RAW RX to CAN TX");
+    debugD("Connecting UDP RX to YDWG RAW");
     ydwg_raw_udp_server->connect_to(new StringTokenizer("\r\n"))
         ->connect_to(ydwg_raw_to_can_transform);
 
-    // Frames originating from YDWG RAW Application messages should be resent
-    // as 'T' direction YDWG RAW messages
-    can_frame_clearinghouse
-        ->connect_to(new Filter<CANFrame>([](CANFrame frame) {
-          if (frame.origin_type == CANFrameOriginType::kApp) {
-            return true;
-          } else {
-            return false;
-          }
-        }))
-        ->connect_to(can_to_ydwg_transform);
   }
 }
 
@@ -474,9 +468,11 @@ void SetupUIComponents() {
       "install any available firmware updates.",
       1100);
 
-  port_config_ydwg_raw_tcp_tx = new PortConfig(
-      true, kDefaultYdwgRawTCPServerPort, "/Network/YDWG RAW TCP Server",
-      "Enable TCP server for transmitting YDWG RAW data.", 1300);
+  port_config_ydwg_raw_tcp = new BiDiPortConfig(
+      true, false, "Transmit to WiFi", "Receive from WiFi",
+      kDefaultYdwgRawTCPServerPort, "/Network/YDWG RAW TCP Server",
+      "Enable TCP server for transmitting and/or receiving YDWG RAW data.",
+      1300);
 
   port_config_ydwg_raw_udp = new BiDiPortConfig(
       true, false, "Transmit to WiFi", "Receive from WiFi",
