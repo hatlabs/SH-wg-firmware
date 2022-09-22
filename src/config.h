@@ -38,4 +38,7 @@ static constexpr int kDelayBetweenFirmwareUpdateChecksMs =
 // WiFi captive portal password
 constexpr char kWiFiCaptivePortalPassword[] = "abcdabcd";
 
+constexpr size_t kMaxNMEA2000MessageSeasmartSize = 500;
+constexpr size_t kMaxNMEA0183MessageSize = 200;
+
 #endif // SH_WG_CONFIG_H_

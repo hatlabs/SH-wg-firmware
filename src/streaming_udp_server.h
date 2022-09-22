@@ -8,22 +8,25 @@
 #include "sensesp/net/networking.h"
 #include "sensesp/system/task_queue_producer.h"
 #include "sensesp/system/valueconsumer.h"
+#include "origin_string.h"
 
 using namespace sensesp;
 
-class StreamingUDPServer : public ValueProducer<String>,
-                           public ValueConsumer<String>,
+class StreamingUDPServer : public ValueProducer<OriginString>,
+                           public ValueConsumer<OriginString>,
                            public Startable {
  public:
   StreamingUDPServer(const uint16_t port, Networking* networking)
       : Startable(50), networking_{networking}, port_{port} {
-    task_queue_producer_ = new TaskQueueProducer<String*>(NULL, 10, 490);
+    task_queue_producer_ = new TaskQueueProducer<OriginString*>(NULL, 10, 490);
   }
 
-  void set_input(String new_value, uint8_t input_channel = 0) override {
-    if (connected_) {
-      String str_nl = new_value;
-      async_udp_.broadcast(str_nl.c_str());
+  void set_input(OriginString new_value, uint8_t input_channel = 0) override {
+    if (connected_ && new_value.origin_id != origin_id(&async_udp_)) {
+      size_t len_sent = async_udp_.broadcast(new_value.data.c_str());
+      if (len_sent == 0) {
+        debugW("UDP broadcast failed: %s", new_value.data.c_str());
+      }
     }
   }
 
@@ -34,7 +37,7 @@ class StreamingUDPServer : public ValueProducer<String>,
   const uint16_t port_;
   AsyncUDP async_udp_;
   bool connected_ = false;
-  TaskQueueProducer<String*>* task_queue_producer_;
+  TaskQueueProducer<OriginString*>* task_queue_producer_;
 
   bool enabled_ = true;
 
@@ -53,11 +56,12 @@ class StreamingUDPServer : public ValueProducer<String>,
                   memcpy(buf, packet.data(), packet.length());
                   buf[packet.length()] = '\0';
 
-                  String* packet_str = new String(buf);
-                  // Handle the received packet in the main task
-                  // Note that there is a minor possibility of a memory leak
-                  // if the task is not handled in time.
-                  task_queue_producer_->set(packet_str);
+                  OriginString* ydwg_string = new OriginString{
+                      origin_id(&async_udp_), buf};
+                  //  Handle the received packet in the main task
+                  //  Note that there is a minor possibility of a memory leak
+                  //  if the task is not handled in time.
+                  task_queue_producer_->set(ydwg_string);
                 });
               } else {
                 debugE("UDP Server startup failed - port reserved?");
@@ -65,9 +69,9 @@ class StreamingUDPServer : public ValueProducer<String>,
             }
           }));
       task_queue_producer_->connect_to(
-          new LambdaConsumer<String*>([this](String* packet_str) {
-            this->emit(*packet_str);
-            delete packet_str;
+          new LambdaConsumer<OriginString*>([this](OriginString* ydwg_str) {
+            this->emit(*ydwg_str);
+            delete ydwg_str;
           }));
     }
   }

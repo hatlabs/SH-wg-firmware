@@ -6,13 +6,15 @@
 
 #include "ReactESP.h"
 #include "elapsedMillis.h"
+#include "origin_string.h"
 #include "sensesp/transforms/transform.h"
 
 using namespace sensesp;
 
-class N2KTo0183Transform : public Transform<tN2kMsg, String> {
+class N2KTo0183Transform : public Transform<tN2kMsg, OriginString> {
  public:
-  N2KTo0183Transform(String config_path = "") : Transform(config_path) {
+  N2KTo0183Transform(tNMEA2000* nmea2000, String config_path = "")
+      : Transform(config_path), nmea2000_{nmea2000} {
     // invalidate old data
     ReactESP::app->onRepeat(10, [this]() { this->invalidate_old_data(); });
     // send RMC periodically
@@ -21,6 +23,7 @@ class N2KTo0183Transform : public Transform<tN2kMsg, String> {
   virtual void set_input(tN2kMsg new_value, uint8_t input_channel = 0) override;
 
  protected:
+  tNMEA2000* nmea2000_;  //< used to hardcode the origin
   static const unsigned long kRMCPeriod_ = 1000;  // ms
   static const unsigned int kMaxNMEA0183MessageSize_ = 164;
 

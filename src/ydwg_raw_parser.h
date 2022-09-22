@@ -6,25 +6,27 @@
 #include <sys/time.h>
 
 #include "can_frame.h"
+#include "origin_string.h"
 #include "sensesp/transforms/transform.h"
 
 using namespace sensesp;
 
-bool YDWGRawToCANFrame(CANFrame& frame,
-                       struct timeval& timestamp, const String& ydwg_raw);
+bool YDWGRawToCANFrame(CANFrame& frame, struct timeval& timestamp,
+                       const OriginString& ydwg_raw);
 
-class YDWGRawToCANFrameTransform : public Transform<String, CANFrame> {
+class YDWGRawToCANFrameTransform : public Transform<OriginString, CANFrame> {
  public:
-  YDWGRawToCANFrameTransform() : Transform<String, CANFrame>() {}
+  YDWGRawToCANFrameTransform() : Transform<OriginString, CANFrame>() {}
 
-  void set_input(const String ydwg_raw_str, uint8_t input_channel) override {
+  void set_input(const OriginString ydwg_raw_str,
+                 uint8_t input_channel) override {
     CANFrame frame;
     char direction;
     struct timeval timestamp;
     if (YDWGRawToCANFrame(frame, timestamp, ydwg_raw_str)) {
       emit(frame);
     } else {
-      debugW("YDWG RAW string parsing failed: %s", ydwg_raw_str.c_str());
+      debugW("YDWG RAW string parsing failed: %s", ydwg_raw_str.data.c_str());
     }
   }
 };

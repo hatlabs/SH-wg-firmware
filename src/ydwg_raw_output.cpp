@@ -1,7 +1,8 @@
 #include "ydwg_raw_output.h"
 #include "time_string.h"
+#include "origin_string.h"
 
-String CANFrameToYDWGRaw(const CANFrame& frame, struct timeval& timestamp) {
+OriginString CANFrameToYDWGRaw(const CANFrame& frame, struct timeval& timestamp) {
   constexpr int kBufferSize = 32;
   char buffer[kBufferSize];
 
@@ -18,9 +19,11 @@ String CANFrameToYDWGRaw(const CANFrame& frame, struct timeval& timestamp) {
   // replace the final space with a zero
   buffer[3*frame.len - 1] = '\0';
 
-  char direction = frame.origin == CANFrameOrigin::kApp ? 'T' : 'R';
+  char direction = frame.origin_type == CANFrameOriginType::kApp ? 'T' : 'R';
 
   String out = time_str + direction + " " + can_id_str + buffer + "\r\n";
 
-  return out;
+  OriginString origin_string = {frame.origin_id, out};
+
+  return origin_string;
 }

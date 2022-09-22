@@ -1,5 +1,8 @@
 #include "n2k_nmea0183_transform.h"
 
+#include "shwg.h"
+#include "origin_string.h"
+
 #include <N2kMessages.h>
 #include <NMEA0183AISMessages.h>
 #include <NMEA0183Messages.h>
@@ -364,5 +367,6 @@ void N2KTo0183Transform::emit_0183_string(const tNMEA0183Msg& msg) {
     debugW("Could not get NMEA 0183 message string");
     return;
   }
-  emit(String(buf));
+  OriginString output = {origin_id(nmea2000_), String(buf) + "\r\n"};
+  emit(output);
 }

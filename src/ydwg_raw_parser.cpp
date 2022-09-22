@@ -3,6 +3,7 @@
 #include <sys/time.h>
 
 #include "can_frame.h"
+#include "origin_string.h"
 #include "shwg.h"
 
 // Workaround for getting strptime to work with the Arduino framework
@@ -22,11 +23,18 @@ String next_token(const String& str, int& pos) {
   return token;
 }
 
-bool YDWGRawAppStringToCANFrame(CANFrame& frame, const String ydwg_raw_app) {
+bool YDWGRawAppStringToCANFrame(CANFrame& frame,
+                                const OriginString ydwg_raw_app) {
   int pos = 0;
 
+  String ydwg_raw_app_str = ydwg_raw_app.data;
+
+  // YDWG RAW app messages need to be resent to the origin; let's
+  // clear the origin id to do that.
+  frame.origin_id = 0;
+
   // get the CAN id token
-  String can_id_token = next_token(ydwg_raw_app, pos);
+  String can_id_token = next_token(ydwg_raw_app_str, pos);
 
   // verify the token string length
   int can_id_token_length = can_id_token.length();
@@ -47,7 +55,7 @@ bool YDWGRawAppStringToCANFrame(CANFrame& frame, const String ydwg_raw_app) {
 
   // collect the data bytes
   for (int i = 0; i < 8; i++) {
-    String data_token = next_token(ydwg_raw_app, pos);
+    String data_token = next_token(ydwg_raw_app_str, pos);
 
     if (data_token == "") {
       // we've reached the end of the data tokens
@@ -69,28 +77,29 @@ bool YDWGRawAppStringToCANFrame(CANFrame& frame, const String ydwg_raw_app) {
 
     data[i] = data_byte;
     data_length++;
-
   }
 
   // set the CAN frame contents
   frame.id = can_id;
   frame.len = data_length;
   memcpy(frame.buf, data, data_length);
-  frame.origin = CANFrameOrigin::kApp;
+  frame.origin_type = CANFrameOriginType::kApp;
 
   return true;
 }
 
 bool YDWGRawDeviceStringToCANFrame(CANFrame& frame, struct timeval& timestamp,
-                                   const String ydwg_raw) {
+                                   const OriginString ydwg_raw) {
   int pos = 0;
+
+  String ydwg_raw_str = ydwg_raw.data;
 
   // get the timestamp string
 
-  String time_str = next_token(ydwg_raw, pos);
+  String time_str = next_token(ydwg_raw_str, pos);
 
   if (time_str == "") {
-    debugD("Timestamp token parsing failed: %s", ydwg_raw.c_str());
+    debugD("Timestamp token parsing failed: %s", ydwg_raw_str.c_str());
     return false;
   }
 
@@ -127,7 +136,7 @@ bool YDWGRawDeviceStringToCANFrame(CANFrame& frame, struct timeval& timestamp,
   timestamp.tv_usec = (int)((second - (int)second) * 1000000);
 
   // get the direction token
-  String dir_token = next_token(ydwg_raw, pos);
+  String dir_token = next_token(ydwg_raw_str, pos);
 
   // verify the token string length
   if (dir_token.length() != 1 || (dir_token[0] != 'R' && dir_token[0] != 'T')) {
@@ -139,21 +148,26 @@ bool YDWGRawDeviceStringToCANFrame(CANFrame& frame, struct timeval& timestamp,
 
   // remaining substring should be identical to an YDWG RAW Application message
 
-  String app_str = ydwg_raw.substring(pos);
+  String app_str = ydwg_raw_str.substring(pos);
 
-  if (YDWGRawAppStringToCANFrame(frame, app_str)) {
+  OriginString app_origin_str = {ydwg_raw.origin_id, app_str};
+
+  if (YDWGRawAppStringToCANFrame(frame, app_origin_str)) {
     switch (direction) {
       case 'R':
-        frame.origin = CANFrameOrigin::kRemoteCAN;
+        frame.origin_type = CANFrameOriginType::kRemoteCAN;
         break;
       case 'T':
-        frame.origin = CANFrameOrigin::kRemoteApp;
+        frame.origin_type = CANFrameOriginType::kRemoteApp;
         break;
       default:
-        frame.origin = CANFrameOrigin::kUnknown;
+        frame.origin_type = CANFrameOriginType::kUnknown;
         return false;
     }
   }
+
+  frame.origin_id = ydwg_raw.origin_id;
+
   return true;
 }
 
@@ -167,7 +181,7 @@ bool YDWGRawDeviceStringToCANFrame(CANFrame& frame, struct timeval& timestamp,
  * @return false Parsing failed.
  */
 bool YDWGRawToCANFrame(CANFrame& frame, struct timeval& timestamp,
-                       const String& ydwg_raw) {
+                       const OriginString& ydwg_raw) {
   // Example YDWG raw string:
   // 15:53:34.738 R 0DFF0600 20 0F 13 99 FF 01 00 0B
 
@@ -175,16 +189,16 @@ bool YDWGRawToCANFrame(CANFrame& frame, struct timeval& timestamp,
   constexpr int kMaxLength = 49;
 
   // Check if the string is too long.
-  if (ydwg_raw.length() > kMaxLength) {
-    debugD("YDWG raw string too long: %d", ydwg_raw.length());
+  if (ydwg_raw.data.length() > kMaxLength) {
+    debugD("YDWG raw string too long: %d", ydwg_raw.data.length());
     return false;
   }
 
-  String ydwg_raw_copy = ydwg_raw;
+  OriginString ydwg_raw_copy = ydwg_raw;
 
   // Remove the CRLF.
 
-  ydwg_raw_copy.trim();
+  ydwg_raw_copy.data.trim();
 
   // Try parsing a Device format (timestamped) string.
 

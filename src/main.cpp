@@ -17,13 +17,15 @@
 #include "N2kMessages.h"
 #include "NMEA2000/NMEA2000_esp32_framehandler.h"
 #include "NMEA2000_CAN.h"
-#include "Seasmart.h"
 #include "can_frame.h"
+#include "concatenate_strings.h"
 #include "config.h"
 #include "filter_transform.h"
 #include "firmware_info.h"
 #include "n2k_nmea0183_transform.h"
+#include "origin_string.h"
 #include "ota_update_task.h"
+#include "seasmart_transform.h"
 #include "sensesp/net/discovery.h"
 #include "sensesp/net/http_server.h"
 #include "sensesp/net/networking.h"
@@ -45,12 +47,9 @@
 
 using namespace sensesp;
 
-#define MAX_NMEA2000_MESSAGE_SEASMART_SIZE 500
-#define MAX_NMEA0183_MESSAGE_SIZE 200
-
 // Set the information for other bus devices, which messages we support
-const unsigned long kTransmitMessages[] PROGMEM = {0};
-const unsigned long ReceiveMessages[] PROGMEM = {
+const unsigned long kTransmitMessages[] = {0};
+const unsigned long ReceiveMessages[] = {
     /*126992L,*/  // System time
     127250L,      // Heading
     127258L,      // Magnetic variation
@@ -85,7 +84,7 @@ SensESPMinimalApp *sensesp_app;
 Networking *networking;
 
 CheckboxConfig *checkbox_config_enable_firmware_updates;
-PortConfig *port_config_ydwg_raw_tcp_tx;
+BiDiPortConfig *port_config_ydwg_raw_tcp;
 BiDiPortConfig *port_config_ydwg_raw_udp;
 CheckboxConfig *checkbox_config_translate_to_seasmart;
 CheckboxConfig *checkbox_config_translate_to_nmea0183;
@@ -123,6 +122,9 @@ UILambdaOutput<uint32_t> ui_output_can_frame_tx_counter(
 
 UILambdaOutput<int> ui_output_uptime(
     "Uptime", []() { return millis() / 1000; }, "Runtime", 400);
+
+UILambdaOutput<int> ui_output_free_heap(
+    "Free memory", []() { return ESP.getFreeHeap(); }, "Runtime", 410);
 
 int led_state = -1;
 
@@ -162,30 +164,14 @@ void SetSystemTime(const tN2kMsg &n2k_msg) {
   }
 }
 
-String GetSeaSmartString(const tN2kMsg &n2k_msg) {
-  char buf[MAX_NMEA2000_MESSAGE_SEASMART_SIZE];
-  if (N2kToSeasmart(n2k_msg, millis(), buf,
-                    MAX_NMEA2000_MESSAGE_SEASMART_SIZE) == 0) {
-    return "";
-  } else {
-    return String(buf) + "\r\n";
-  }
-}
-
 ObservableValue<tN2kMsg> n2k_msg_input;
 ObservableValue<CANFrame> can_frame_input;
 
-class SeasmartTransform : public Transform<tN2kMsg, String> {
- public:
-  SeasmartTransform() : Transform<tN2kMsg, String>() {}
+// All CAN frame producers and consumers connect to the clearinghouse
+LambdaTransform<CANFrame, CANFrame> *can_frame_clearinghouse;
 
-  void set_input(tN2kMsg input, uint8_t input_channel = 0) override {
-    String seasmart_str = GetSeaSmartString(input);
-    if (seasmart_str.length() > 0) {
-      this->emit(seasmart_str);
-    }
-  }
-};
+// Consumer that will send CAN frames to the NMEA 2000 bus
+LambdaConsumer<CANFrame> *can_frame_sender;
 
 void InitNMEA2000() {
   nmea2000->SetN2kCANMsgBufSize(8);
@@ -233,7 +219,8 @@ void InitNMEA2000() {
       frame.id = can_id;
       frame.len = len;
       memcpy(frame.buf, buf, len);
-      frame.origin = CANFrameOrigin::kLocal;
+      frame.origin_type = CANFrameOriginType::kLocal;
+      frame.origin_id = origin_id(nmea2000);
       can_frame_input.set(frame);
     }
   });
@@ -263,8 +250,13 @@ static void SetupBlueLEDBlinker() {
             break;
           case WiFiState::kWifiManagerActivated:
             ledcAttachPin(kBlueLedPin, kBluePWMChannel);
-            // blink the blue LED at 2 Hz and 25% duty cycle
-            ledcWrite(kBluePWMChannel, 64);
+            // blink the blue LED at 2 Hz and 12.5% duty cycle
+            ledcWrite(kBluePWMChannel, 65536 / 8);
+            break;
+          case WiFiState::kWifiAPModeActivated:
+            ledcAttachPin(kBlueLedPin, kBluePWMChannel);
+            // blink the blue LED at 2 Hz and 87.5% duty cycle
+            ledcWrite(kBluePWMChannel, 65536 * 7 / 8);
             break;
           default:
             digitalWrite(kBlueLedPin, LOW);
@@ -276,12 +268,12 @@ static void SetupBlueLEDBlinker() {
 }
 
 static void SetupYellowLEDBlinker(
-    LambdaTransform<CANFrame, String> *ydwg_transform) {
+    ValueProducer<OriginString> *string_producer) {
   static int solid_on_pattern[] = {1000, 0, PATTERN_END};
   auto blinker = new PatternBlinker(kYellowLedPin, solid_on_pattern);
 
-  ydwg_transform->connect_to(
-      new LambdaConsumer<String>([blinker](const String &str) {
+  string_producer->connect_to(
+      new LambdaConsumer<OriginString>([blinker](const OriginString &str) {
         if (WiFi.isConnected()) {
           blinker->blip(5);
         }
@@ -289,17 +281,58 @@ static void SetupYellowLEDBlinker(
 }
 
 static void SetupTransmitters() {
+  can_frame_clearinghouse = new LambdaTransform<CANFrame, CANFrame>(
+      [](const CANFrame &frame) { return frame; });
+
   auto can_to_ydwg_transform =
-      new LambdaTransform<CANFrame, String>([](CANFrame frame) {
+      new LambdaTransform<CANFrame, OriginString>([](CANFrame frame) {
         struct timeval tv;
         gettimeofday(&tv, NULL);
-        String raw_string = CANFrameToYDWGRaw(frame, tv);
-        return raw_string;
+        OriginString origin_string = CANFrameToYDWGRaw(frame, tv);
+        return origin_string;
       });
 
-  auto n2k_to_0183_transform = new N2KTo0183Transform();
-  auto n2k_to_seasmart_transform = new SeasmartTransform();
+  can_frame_sender = new LambdaConsumer<CANFrame>([](CANFrame frame) {
+    // debugD("Sending CAN Frame with ID %d and length %d", frame.id,
+    // frame.len);
+
+    if (frame.origin_id == origin_id(nmea2000)) {
+      // ignore frames that we just received
+      return;
+    }
+
+    if (frame.origin_type == CANFrameOriginType::kRemoteApp) {
+      // Ignore YDWG RAW messages with 'T' direction
+      return;
+    }
+    can_frame_tx_counter++;
+    if (frame.origin_type == CANFrameOriginType::kApp) {
+      // Application format messages need to have their source address
+      // replaced with our own source address.
+
+      unsigned char our_source = nmea2000->GetN2kSource(0);
+      uint32_t frame_id = frame.id;
+      // clear existing source address
+      frame_id &= ~0xFF;
+      // set new source address
+      frame_id |= our_source;
+
+      frame.id = frame_id;
+    }
+    nmea2000->CANSendFrame(frame.id, frame.len, frame.buf);
+  });
+
+  auto concatenate_ydwg_strings = new ConcatenateStrings(100, 1000);
+  auto concatenate_n0183_strings = new ConcatenateStrings(100, 1000);
+
+  auto n2k_to_0183_transform = new N2KTo0183Transform(nmea2000);
+  auto n2k_to_seasmart_transform = new SeasmartTransform(nmea2000);
   auto ydwg_raw_to_can_transform = new YDWGRawToCANFrameTransform();
+
+  can_to_ydwg_transform->connect_to(concatenate_ydwg_strings);
+
+  //////
+  // N2K message routing
 
   // if configured, connect the N2K input to NMEA 0183 transform
 
@@ -317,12 +350,22 @@ static void SetupTransmitters() {
     n2k_msg_input.connect_to(n2k_to_seasmart_transform);
   }
 
+  //////
+  // CAN frame routing
+
+  can_frame_input.connect_to(can_frame_clearinghouse);
+  can_frame_clearinghouse->connect_to(can_frame_sender);
+  ydwg_raw_to_can_transform->connect_to(can_frame_clearinghouse);
+
   // set up the YDWG RAW TCP server
 
   debugD("Setting up YDWG RAW TCP server");
-  int ydwg_raw_tcp_port = port_config_ydwg_raw_tcp_tx->get_port();
+  int ydwg_raw_tcp_port = port_config_ydwg_raw_tcp->get_port();
   ydwg_raw_tcp_server = new StreamingTCPServer(ydwg_raw_tcp_port, networking);
-  ydwg_raw_tcp_server->set_enabled(port_config_ydwg_raw_tcp_tx->get_enabled());
+  if (!port_config_ydwg_raw_tcp->get_tx_enabled() &&
+      !port_config_ydwg_raw_tcp->get_rx_enabled()) {
+    ydwg_raw_tcp_server->set_enabled(false);
+  }
 
   // set up the YDWG RAW UDP server
 
@@ -347,77 +390,49 @@ static void SetupTransmitters() {
   int nmea0183_udp_port = port_config_nmea0183_udp_tx->get_port();
   nmea0183_udp_server = new StreamingUDPServer(nmea0183_udp_port, networking);
   nmea0183_udp_server->set_enabled(port_config_nmea0183_udp_tx->get_enabled());
+  concatenate_n0183_strings->connect_to(nmea0183_udp_server);
 
   // send the generated NMEA 0183 message
   if (checkbox_config_translate_to_nmea0183->get_value()) {
     debugD("Connecting NMEA 0183 to consumers");
     n2k_to_0183_transform->connect_to(nmea0183_tcp_server);
-    n2k_to_0183_transform->connect_to(nmea0183_udp_server);
+    n2k_to_0183_transform->connect_to(concatenate_n0183_strings);
+    concatenate_n0183_strings->connect_to(nmea0183_udp_server);
   }
 
   // send the generated SeaSmart message
   if (checkbox_config_translate_to_seasmart->get_value()) {
     debugD("Connecting Seasmart to consumers");
     n2k_to_seasmart_transform->connect_to(nmea0183_tcp_server);
-    n2k_to_seasmart_transform->connect_to(nmea0183_udp_server);
+    n2k_to_seasmart_transform->connect_to(concatenate_n0183_strings);
   }
 
   // connect the CAN frame input to the YDWG raw transform
   debugD("Connecting CAN input to YDWG raw transform");
-  can_frame_input.connect_to(can_to_ydwg_transform);
+  can_frame_clearinghouse->connect_to(can_to_ydwg_transform);
 
-  if (port_config_ydwg_raw_tcp_tx->get_enabled()) {
+  if (port_config_ydwg_raw_tcp->get_tx_enabled()) {
+    debugD("Connecting YDWG RAW TX to TCP server");
     can_to_ydwg_transform->connect_to(ydwg_raw_tcp_server);
   }
 
+  if (port_config_ydwg_raw_tcp->get_rx_enabled()) {
+    debugD("Connecting TCP server to YDWG RAW RX");
+    ydwg_raw_tcp_server->connect_to(ydwg_raw_to_can_transform);
+  }
+
   if (port_config_ydwg_raw_udp->get_tx_enabled()) {
-    debugD("Connecting YDWG raw to consumers");
+    debugD("Connecting YDWG RAW to UDP TX");
     SetupYellowLEDBlinker(can_to_ydwg_transform);
 
-    can_to_ydwg_transform->connect_to(ydwg_raw_udp_server);
+    concatenate_ydwg_strings->connect_to(ydwg_raw_udp_server);
   }
-  // ydwg_raw_udp_server->connect_to(new LambdaConsumer<String>(
-  //   [](const String &str) { debugD("Received over UDP: %s", str.c_str());
-  //   }));
 
   if (port_config_ydwg_raw_udp->get_rx_enabled()) {
-    debugD("Connecting YDWG RAW RX to CAN TX");
+    debugD("Connecting UDP RX to YDWG RAW");
     ydwg_raw_udp_server->connect_to(new StringTokenizer("\r\n"))
-        ->connect_to(ydwg_raw_to_can_transform)
-        ->connect_to(new LambdaConsumer<CANFrame>([](CANFrame frame) {
-          // debugD("Sending CAN Frame with ID %d and length %d", frame.id,
-          // frame.len);
-          if (frame.origin == CANFrameOrigin::kRemoteApp) {
-            // Ignore YDWG RAW messages with 'T' direction
-            return;
-          }
-          can_frame_tx_counter++;
-          if (frame.origin == CANFrameOrigin::kApp) {
-            // Application format messages need to have their source address
-            // replaced with our own source address.
+        ->connect_to(ydwg_raw_to_can_transform);
 
-            unsigned char our_source = nmea2000->GetN2kSource(0);
-            uint32_t frame_id = frame.id;
-            // clear existing source address
-            frame_id &= ~0xFF;
-            // set new source address
-            frame_id |= our_source;
-
-            frame.id = frame_id;
-          }
-          nmea2000->CANSendFrame(frame.id, frame.len, frame.buf);
-        }));
-    // Frames originating from YDWG RAW Application messages should be resent
-    // as 'T' direction YDWG RAW messages
-    ydwg_raw_to_can_transform
-        ->connect_to(new Filter<CANFrame>([](CANFrame frame) {
-          if (frame.origin == CANFrameOrigin::kApp) {
-            return true;
-          } else {
-            return false;
-          }
-        }))
-        ->connect_to(can_to_ydwg_transform);
   }
 }
 
@@ -453,9 +468,11 @@ void SetupUIComponents() {
       "install any available firmware updates.",
       1100);
 
-  port_config_ydwg_raw_tcp_tx = new PortConfig(
-      true, kDefaultYdwgRawTCPServerPort, "/Network/YDWG RAW TCP Server",
-      "Enable TCP server for transmitting YDWG RAW data.", 1300);
+  port_config_ydwg_raw_tcp = new BiDiPortConfig(
+      true, false, "Transmit to WiFi", "Receive from WiFi",
+      kDefaultYdwgRawTCPServerPort, "/Network/YDWG RAW TCP Server",
+      "Enable TCP server for transmitting and/or receiving YDWG RAW data.",
+      1300);
 
   port_config_ydwg_raw_udp = new BiDiPortConfig(
       true, false, "Transmit to WiFi", "Receive from WiFi",
@@ -523,6 +540,14 @@ void setup() {
                               kWiFiCaptivePortalPassword);
 
   networking->set_wifi_manager_ap_ssid(String("Configure SH-wg ") + mac_str);
+
+  networking->connect_to(new LambdaConsumer<WiFiState>([](WiFiState state) {
+    // turn of WiFi power saving when connected
+    if (state == WiFiState::kWifiConnectedToAP) {
+      debugD("Disabling WiFi power saving");
+      WiFi.setSleep(false);
+    }
+  }));
 
   // create the MDNS discovery object
   auto mdns_discovery_ = new MDNSDiscovery();

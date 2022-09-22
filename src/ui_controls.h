@@ -39,6 +39,8 @@ class BiDiPortConfig : public Configurable {
                  String description, int sort_order = 1000)
       : tx_enabled_(tx_enabled),
         rx_enabled_(rx_enabled),
+        tx_title_(tx_title),
+        rx_title_(rx_title),
         port_(port),
         Configurable(config_path, description, sort_order) {
     load_configuration();
