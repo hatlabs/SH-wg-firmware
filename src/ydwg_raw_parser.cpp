@@ -29,7 +29,9 @@ bool YDWGRawAppStringToCANFrame(CANFrame& frame,
 
   String ydwg_raw_app_str = ydwg_raw_app.data;
 
-  frame.origin_id = ydwg_raw_app.origin_id;
+  // YDWG RAW app messages need to be resent to the origin; let's
+  // clear the origin id to do that.
+  frame.origin_id = 0;
 
   // get the CAN id token
   String can_id_token = next_token(ydwg_raw_app_str, pos);
@@ -163,6 +165,9 @@ bool YDWGRawDeviceStringToCANFrame(CANFrame& frame, struct timeval& timestamp,
         return false;
     }
   }
+
+  frame.origin_id = ydwg_raw.origin_id;
+
   return true;
 }
 
