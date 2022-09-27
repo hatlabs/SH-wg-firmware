@@ -75,6 +75,50 @@ bool BiDiPortConfig::set_configuration(const JsonObject& config) {
   return true;
 }
 
+static const char kHostPortConfigSchemaTemplate[] = R"({
+    "type": "object",
+    "properties": {
+        "enable": { "title": "{{title}}", "type": "boolean" },
+        "host": { "title": "{{host}}", "type": "string" },
+        "port": { "title": "{{port}}", "type": "integer" }
+    }
+  })";
+
+String HostPortConfig::get_config_schema() {
+  String schema = kHostPortConfigSchemaTemplate;
+  schema.replace("{{title}}", enabled_title_);
+  schema.replace("{{host}}", host_title_);
+  schema.replace("{{port}}", port_title_);
+  return schema;
+}
+
+void HostPortConfig::get_configuration(JsonObject& root) {
+  root["enable"] = enabled_;
+  root["host"] = host_;
+  root["port"] = port_;
+}
+
+bool HostPortConfig::set_configuration(const JsonObject& config) {
+  if (!config.containsKey("enable")) {
+    return false;
+  } else {
+    enabled_ = config["enable"];
+  }
+
+  if (!config.containsKey("host")) {
+    return false;
+  } else {
+    host_ = config["host"].as<String>();
+  }
+
+  if (!config.containsKey("port")) {
+    return false;
+  } else {
+    port_ = config["port"];
+  }
+
+  return true;
+}
 
 static const char kCheckboxConfigSchemaTemplate[] = R"({
     "type": "object",
