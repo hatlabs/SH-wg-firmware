@@ -24,6 +24,10 @@ class BufferedTCPClient {
 
   int available() { return client_->available(); }
 
+  void clear_buf() {
+    rx_pos_ = 0;
+  }
+
   int read_line(String& line) {
     while (client_->available()) {
       char c = client_->read();
