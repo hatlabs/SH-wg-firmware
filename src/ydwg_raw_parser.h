@@ -25,8 +25,6 @@ class YDWGRawToCANFrameTransform : public Transform<OriginString, CANFrame> {
     struct timeval timestamp;
     if (YDWGRawToCANFrame(frame, timestamp, ydwg_raw_str)) {
       emit(frame);
-    } else {
-      debugW("YDWG RAW string parsing failed: %s", ydwg_raw_str.data.c_str());
     }
   }
 };
