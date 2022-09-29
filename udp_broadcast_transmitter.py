@@ -24,8 +24,13 @@ def send_data(data, ip_addrs, port):
 
 
 def transmit_data(data, port):
-    interfaces = socket.getaddrinfo(host=socket.gethostname(), port=None, family=socket.AF_INET)
-    all_ip_addrs = [ip[-1][0] for ip in interfaces]
+    # kludge to get only the IP address associated with the default route
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(("8.8.8.8", 80))
+    all_ip_addrs = [s.getsockname()[0]]
+
+    #interfaces = socket.getaddrinfo(host=socket.gethostname(), port=None, family=socket.AF_INET)
+    #all_ip_addrs = [ip[-1][0] for ip in interfaces]
 
     current_timestamp = datetime.datetime.now().timestamp()
     reference_timestamp = get_ydwg_data_time(data[0])
@@ -46,9 +51,8 @@ def main():
     with open(input_file) as f:
         input_data = [r.rstrip() for r in f]  # remove line breaks
 
-    while True:
-        print("Transmitting data...")
-        transmit_data(input_data, port)
+    print("Transmitting data...")
+    transmit_data(input_data, port)
 
 
 if __name__ == '__main__':
