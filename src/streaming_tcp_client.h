@@ -34,7 +34,11 @@ class StreamingTCPClient : public ValueProducer<OriginString>,
 
   void set_input(OriginString new_value, uint8_t input_channel = 0) override {
     OriginString *value_ptr = new OriginString(new_value);
-    tx_queue_producer_->set(value_ptr);
+    bool retval = tx_queue_producer_->set(value_ptr);
+    if (retval == false) {
+      debugW("StreamingTCPClient: tx_queue_producer_ full, dropping value");
+      delete value_ptr;
+    }
   }
 
   void set_enabled(bool enabled) { enabled_ = enabled; }
@@ -96,9 +100,16 @@ class StreamingTCPClient : public ValueProducer<OriginString>,
     task_app_->onRepeat(1, [this]() {
       if (client_->client_->connected()) {
         String line;
+        int retval;
         while (this->client_->read_line(line)) {
-          OriginString* value = new OriginString{origin_id(&client_->client_), line};
-          this->rx_queue_producer_->set(value);
+          OriginString* value =
+              new OriginString{origin_id(&client_->client_), line};
+          retval = this->rx_queue_producer_->set(value);
+          if (retval == false) {
+            debugW(
+                "StreamingTCPClient: rx_queue_producer_ full, dropping value");
+            delete value;
+          }
         }
       }
     });
