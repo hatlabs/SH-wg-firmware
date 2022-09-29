@@ -24,9 +24,12 @@ class StreamingTCPClient : public ValueProducer<OriginString>,
   StreamingTCPClient(const String& host, const uint16_t port,
                      Networking* networking)
       : Startable(50), networking_{networking}, host_{host}, port_{port} {
+    task_app_ = new ReactESP(false);
     client_ = new BufferedTCPClient(WiFiClientPtr(new WiFiClient()));
-    tx_queue_producer_ = new TaskQueueProducer<OriginString*>(NULL, 20, 491);
-    rx_queue_producer_ = new TaskQueueProducer<OriginString*>(NULL, 20, 492);
+    tx_queue_producer_ =
+        new TaskQueueProducer<OriginString*>(NULL, task_app_, 200, 491);
+    rx_queue_producer_ =
+        new TaskQueueProducer<OriginString*>(NULL, ReactESP::app, 200, 492);
   }
 
   void set_input(OriginString new_value, uint8_t input_channel = 0) override {
@@ -55,7 +58,6 @@ class StreamingTCPClient : public ValueProducer<OriginString>,
   void start() override;
 
   void execute_client_task() {
-    task_app_ = new ReactESP(false);
     // Receive strings to be transmitted in the tcp client task.
     // We don't want consumers to connect to the task queue directly, because
     // we're responsible for deleting the received string objects.

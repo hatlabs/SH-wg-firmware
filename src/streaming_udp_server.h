@@ -18,7 +18,7 @@ class StreamingUDPServer : public ValueProducer<OriginString>,
  public:
   StreamingUDPServer(const uint16_t port, Networking* networking)
       : Startable(50), networking_{networking}, port_{port} {
-    task_queue_producer_ = new TaskQueueProducer<OriginString*>(NULL, 10, 490);
+    task_queue_producer_ = new TaskQueueProducer<OriginString*>(NULL, ReactESP::app, 200, 490);
   }
 
   void set_input(OriginString new_value, uint8_t input_channel = 0) override {
