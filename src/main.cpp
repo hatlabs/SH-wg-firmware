@@ -399,7 +399,6 @@ static void SetupConnections() {
   int nmea0183_udp_port = port_config_nmea0183_udp_tx->get_port();
   nmea0183_udp_server = new StreamingUDPServer(nmea0183_udp_port, networking);
   nmea0183_udp_server->set_enabled(port_config_nmea0183_udp_tx->get_enabled());
-  concatenate_n0183_strings->connect_to(nmea0183_udp_server);
 
   // send the generated NMEA 0183 message
   if (checkbox_config_translate_to_nmea0183->get_value()) {
