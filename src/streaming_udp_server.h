@@ -18,7 +18,7 @@ class StreamingUDPServer : public ValueProducer<OriginString>,
  public:
   StreamingUDPServer(const uint16_t port, Networking* networking)
       : Startable(50), networking_{networking}, port_{port} {
-    task_queue_producer_ = new TaskQueueProducer<OriginString*>(NULL, 10, 490);
+    task_queue_producer_ = new TaskQueueProducer<OriginString*>(NULL, ReactESP::app, 200, 490);
   }
 
   void set_input(OriginString new_value, uint8_t input_channel = 0) override {
@@ -59,9 +59,11 @@ class StreamingUDPServer : public ValueProducer<OriginString>,
                   OriginString* ydwg_string = new OriginString{
                       origin_id(&async_udp_), buf};
                   //  Handle the received packet in the main task
-                  //  Note that there is a minor possibility of a memory leak
-                  //  if the task is not handled in time.
-                  task_queue_producer_->set(ydwg_string);
+                  int retval = task_queue_producer_->set(ydwg_string);
+                  if (retval == false) {
+                    debugW("StreamingUDPServer: task_queue_producer_ full, dropping value");
+                    delete ydwg_string;
+                  }
                 });
               } else {
                 debugE("UDP Server startup failed - port reserved?");

@@ -7,6 +7,7 @@
 #include <list>
 #include <memory>
 
+#include "buffered_tcp_client.h"
 #include "origin_string.h"
 #include "sensesp/net/networking.h"
 #include "sensesp/system/lambda_consumer.h"
@@ -16,44 +17,6 @@
 using namespace sensesp;
 
 constexpr size_t kMaxClients = 10;
-constexpr size_t kRXBufferSize = 512;
-
-using WiFiClientPtr = std::shared_ptr<WiFiClient>;
-
-/**
- * @brief TCP client connection container with RX buffer.
- */
-class BufferedTCPClient {
- public:
-  BufferedTCPClient(WiFiClientPtr client) : client_{client} {}
-
-  WiFiClientPtr client_;
-
-  int available() { return client_->available(); }
-
-  int read_line(String& line) {
-    while (client_->available()) {
-      char c = client_->read();
-      rx_buf_[rx_pos_++] = c;
-      if (rx_pos_ == kRXBufferSize-1) {
-        debugW("RX buffer overflow");
-        rx_pos_ = 0;
-      } else if (c == '\n') {
-        // received a full line
-        rx_buf_[rx_pos_] = '\0';
-        int received = rx_pos_;
-        rx_pos_ = 0;
-        line = rx_buf_;
-        return received;
-      }
-    }
-    return 0;
-  }
-
- protected:
-  char rx_buf_[kRXBufferSize];
-  int rx_pos_ = 0;
-};
 
 /**
  * @brief TCP server that is able to receive and transmit continuous data
@@ -101,7 +64,8 @@ class StreamingTCPServer : public ValueProducer<OriginString>,
 
   void add_client(WiFiClient &client) {
     debugD("New client connected");
-    clients_.push_back(BufferedTCPClient(WiFiClientPtr(new WiFiClient(client))));
+    clients_.push_back(
+        BufferedTCPClient(WiFiClientPtr(new WiFiClient(client))));
   }
 
   void stop_client(std::list<BufferedTCPClient>::iterator &it) {

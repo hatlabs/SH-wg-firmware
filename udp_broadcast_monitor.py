@@ -24,7 +24,8 @@ def main():
     client.bind((ip_addr, port))
 
     while True:
-        data, addr = client.recvfrom(1024)
+        #print("--")
+        data, addr = client.recvfrom(1500)
         print(data.decode("utf-8").strip())
 
 
