@@ -33,7 +33,7 @@ class StreamingTCPClient : public ValueProducer<OriginString>,
   }
 
   void set_input(OriginString new_value, uint8_t input_channel = 0) override {
-    OriginString *value_ptr = new OriginString(new_value);
+    OriginString* value_ptr = new OriginString(new_value);
     bool retval = tx_queue_producer_->set(value_ptr);
     if (retval == false) {
       debugW("StreamingTCPClient: tx_queue_producer_ full, dropping value");
@@ -74,7 +74,7 @@ class StreamingTCPClient : public ValueProducer<OriginString>,
     auto send_data =
         new LambdaConsumer<OriginString>([this](OriginString origin_str) {
           if (client_->client_->connected() &&
-            origin_str.origin_id != origin_id(&client_->client_)) {
+              origin_str.origin_id != origin_id(&client_->client_)) {
             client_->client_->write(origin_str.data.c_str());
           }
         });
@@ -98,7 +98,7 @@ class StreamingTCPClient : public ValueProducer<OriginString>,
 
     // receive any data sent to the client
     task_app_->onRepeat(1, [this]() {
-      if (client_->client_->connected()) {
+      if (client_->available() || client_->client_->connected()) {
         String line;
         int retval;
         while (this->client_->read_line(line)) {
