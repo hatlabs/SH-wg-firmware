@@ -29,6 +29,14 @@ bool YDWGRawAppStringToCANFrame(CANFrame& frame,
 
   String ydwg_raw_app_str = ydwg_raw_app.data;
 
+  // remove leading and trailing whitespace
+  ydwg_raw_app_str.trim();
+
+  // fail silently if the string is empty
+  if (ydwg_raw_app_str.length() == 0) {
+    return false;
+  }
+
   // YDWG RAW app messages need to be resent to the origin; let's
   // clear the origin id to do that.
   frame.origin_id = 0;
@@ -93,6 +101,14 @@ bool YDWGRawDeviceStringToCANFrame(CANFrame& frame, struct timeval& timestamp,
   int pos = 0;
 
   String ydwg_raw_str = ydwg_raw.data;
+
+  // remove leading and trailing whitespace
+  ydwg_raw_str.trim();
+
+  // fail silently if the string is empty
+  if (ydwg_raw_str.length() == 0) {
+    return false;
+  }
 
   // get the timestamp string
 
