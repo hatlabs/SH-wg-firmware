@@ -271,7 +271,7 @@ void N2KTo0183Transform::handle_class_a_ais_static_and_voyage_related_data(
   char destination[21];
   tN2kAISVersion ais_version;
   tN2kGNSStype gnss_type;
-  tN2kAISTranceiverInfo ais_info;
+  tN2kAISTransceiverInformation ais_info;
   tN2kAISDTE dte;
 
   tNMEA0183AISMsg nmea_0183_ais_msg;
