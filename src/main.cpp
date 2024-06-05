@@ -110,8 +110,8 @@ UILambdaOutput<String> ui_output_ip_address = UILambdaOutput<String>(
     "IP address", []() { return WiFi.localIP().toString(); }, "WiFi", 210);
 UILambdaOutput<String> ui_output_mac_address = UILambdaOutput<String>(
     "MAC", []() { return WiFi.macAddress(); }, "WiFi", 220);
-UILambdaOutput<String> ui_output_wifi_ssid = UILambdaOutput<String>(
-    "SSID", []() { return WiFi.SSID(); }, "WiFi", 230);
+UILambdaOutput<String> ui_output_wifi_ssid =
+    UILambdaOutput<String>("SSID", []() { return WiFi.SSID(); }, "WiFi", 230);
 UILambdaOutput<int8_t> ui_output_wifi_rssi = UILambdaOutput<int8_t>(
     "WiFi signal strength (dB)", []() { return WiFi.RSSI(); }, "WiFi", 240);
 
@@ -134,10 +134,12 @@ UILambdaOutput<int> ui_output_free_heap(
 
 int led_state = -1;
 
-uint32_t GetBoardSerialNumber() {
+uint64_t GetBoardSerialNumber() {
   uint8_t chipid[6];
   esp_efuse_mac_get_default(chipid);
-  return chipid[0] + (chipid[1] << 8) + (chipid[2] << 16) + (chipid[3] << 24);
+  return ((uint64_t)chipid[0] << 0) + ((uint64_t)chipid[1] << 8) +
+         ((uint64_t)chipid[2] << 16) + ((uint64_t)chipid[3] << 24) +
+         ((uint64_t)chipid[4] << 32) + ((uint64_t)chipid[5] << 40);
 }
 
 // Set system time if the correct PGN is received
@@ -187,9 +189,9 @@ void InitNMEA2000() {
   // nmea2000->EnableForward(false);                 // Disable all msg
   // forwarding to USB (=Serial)
 
-  char serial_number_str[33];
-  uint32_t serial_number = GetBoardSerialNumber();
-  snprintf(serial_number_str, 32, "%lu", (long unsigned int)serial_number);
+  char serial_number_str[33];  // Model serial code in N2K is 32 characters
+  uint64_t serial_number = GetBoardSerialNumber();
+  snprintf(serial_number_str, 32, "%" PRIu64, (long unsigned int)serial_number);
 
   nmea2000->SetProductInformation(
       serial_number_str,  // Manufacturer's Model serial code
