@@ -31,7 +31,7 @@
 #include "sensesp/net/networking.h"
 #include "sensesp/system/lambda_consumer.h"
 #include "sensesp/system/led_blinker.h"
-#include "sensesp/system/ui_output.h"
+#include "sensesp/ui/ui_output.h"
 #include "sensesp/transforms/lambda_transform.h"
 #include "sensesp_minimal_app_builder.h"
 #include "shwg.h"
