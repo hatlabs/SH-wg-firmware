@@ -205,13 +205,15 @@ void N2KTo0183Transform::handle_class_a_ais_position(const tN2kMsg& msg) {
   double heading;
   double rot;
   tN2kAISNavStatus nav_status;
+  tN2kAISTransceiverInformation AISTransceiverInformation;
+  uint8_t sid;
 
   uint8_t message_type = 1;
   tNMEA0183AISMsg nmea_0183_ais_msg;
 
   if (ParseN2kPGN129038(msg, message_id, repeat, user_id, latitude, longitude,
                         accuracy, raim, seconds, cog, sog, heading, rot,
-                        nav_status)) {
+                        nav_status, AISTransceiverInformation, sid)) {
     if (SetAISClassABMessage1(nmea_0183_ais_msg, message_type, repeat, user_id,
                               latitude, longitude, accuracy, raim, seconds, cog,
                               sog, heading, rot, nav_status)) {
@@ -236,11 +238,12 @@ void N2KTo0183Transform::handle_class_b_ais_position(const tN2kMsg& msg) {
   tN2kAISUnit unit;
   bool display, dsc, band, msg22, state;
   tN2kAISMode mode;
+  uint8_t sid;
 
   if (ParseN2kPGN129039(msg, message_id, repeat, user_id, latitude, longitude,
                         accuracy, raim, seconds, cog, sog,
                         ais_transceiver_information, heading, unit, display,
-                        dsc, band, msg22, mode, state)) {
+                        dsc, band, msg22, mode, state, sid)) {
     tNMEA0183AISMsg nmea_0183_ais_msg;
 
     if (SetAISClassBMessage18(nmea_0183_ais_msg, message_id, repeat, user_id,
@@ -259,7 +262,9 @@ void N2KTo0183Transform::handle_class_a_ais_static_and_voyage_related_data(
   uint32_t user_id;  // MMSI
   uint32_t imo_number;
   char callsign[8];
+  size_t callsignBufSize;
   char name[21];
+  size_t nameBufSize;
   uint8_t vessel_type;
   double length;
   double beam;
@@ -269,17 +274,19 @@ void N2KTo0183Transform::handle_class_a_ais_static_and_voyage_related_data(
   double eta_time;
   double draught;
   char destination[21];
+  size_t destinationBufSize;
   tN2kAISVersion ais_version;
   tN2kGNSStype gnss_type;
   tN2kAISTransceiverInformation ais_info;
   tN2kAISDTE dte;
+  uint8_t sid;
 
   tNMEA0183AISMsg nmea_0183_ais_msg;
 
-  if (ParseN2kPGN129794(msg, message_id, repeat, user_id, imo_number, callsign,
-                        name, vessel_type, length, beam, pos_ref_stbd,
-                        pos_ref_bow, eta_date, eta_time, draught, destination,
-                        ais_version, gnss_type, dte, ais_info)) {
+  if (ParseN2kPGN129794(msg, message_id, repeat, user_id, imo_number, callsign, callsignBufSize,
+                        name, nameBufSize, vessel_type, length, beam, pos_ref_stbd,
+                        pos_ref_bow, eta_date, eta_time, draught, destination, destinationBufSize,
+                        ais_version, gnss_type, dte, ais_info, sid)) {
     if (SetAISClassAMessage5(nmea_0183_ais_msg, message_id, repeat, user_id,
                              imo_number, callsign, name, vessel_type, length,
                              beam, pos_ref_stbd, pos_ref_bow, eta_date,
@@ -296,8 +303,12 @@ void N2KTo0183Transform::handle_class_b_ais_cs_static_data_report_part_a(
   tN2kAISRepeat repeat;
   uint32_t user_id;  // MMSI
   char name[21];
+  size_t nameBufSize;
+  tN2kAISTransceiverInformation aisInfo; 
+  uint8_t sid;
 
-  if (ParseN2kPGN129809(msg, message_id, repeat, user_id, name)) {
+
+  if (ParseN2kPGN129809(msg, message_id, repeat, user_id, name, nameBufSize, aisInfo, sid)) {
     tNMEA0183AISMsg nmea_0183_ais_msg;
     // data is stored in a vector to be transmitted when part B arrives
     if (SetAISClassBMessage24PartA(nmea_0183_ais_msg, message_id, repeat,
@@ -312,16 +323,21 @@ void N2KTo0183Transform::handle_class_b_ais_cs_static_data_report_part_b(
   tN2kAISRepeat repeat;
   uint32_t user_id, mothership_id;  // MMSI
   char callsign[8];
+  size_t callsignBufSize;
   char vendor[4];
+  size_t vendorBufSize;
   uint8_t vessel_type;
   double length;
   double beam;
   double pos_ref_stbd;
   double pos_ref_bow;
+  tN2kAISTransceiverInformation aisInfo;
+  uint8_t sid;
+  
 
-  if (ParseN2kPGN129810(msg, message_id, repeat, user_id, vessel_type, vendor,
-                        callsign, length, beam, pos_ref_stbd, pos_ref_bow,
-                        mothership_id)) {
+  if (ParseN2kPGN129810(msg, message_id, repeat, user_id, vessel_type, vendor, vendorBufSize,
+                        callsign, callsignBufSize, length, beam, pos_ref_stbd, pos_ref_bow,
+                        mothership_id, aisInfo, sid)) {
     tNMEA0183AISMsg nmea_0183_ais_msg;
 
     if (SetAISClassBMessage24(nmea_0183_ais_msg, message_id, repeat, user_id,
