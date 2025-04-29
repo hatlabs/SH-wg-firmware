@@ -2,7 +2,7 @@
 #define SH_WG_SRC_UI_CONTROLS_H_
 
 #include "sensesp.h"
-#include "sensesp/system/configurable.h"
+#include "sensesp/ui/config_item.h"
 
 using namespace sensesp;
 
@@ -10,19 +10,17 @@ using namespace sensesp;
  * @brief Configurable with Enable checkbox and a Port input field.
  *
  */
-class PortConfig : public Configurable {
+class PortConfig : public FileSystemSaveable {
  public:
-  PortConfig(bool enabled, uint16_t port, String config_path,
-             String description, int sort_order = 1000)
+  PortConfig(bool enabled, uint16_t port, String config_path)
       : enabled_(enabled),
         port_(port),
-        Configurable(config_path, description, sort_order) {
-    load_configuration();
+        FileSystemSaveable(config_path) {
+    load();
   }
 
-  virtual void get_configuration(JsonObject& doc) override;
-  virtual bool set_configuration(const JsonObject& config) override;
-  virtual String get_config_schema() override;
+  virtual bool to_json(JsonObject& root) override;
+  bool from_json(const JsonObject& config) override;
 
   bool get_enabled() { return enabled_; }
   uint16_t get_port() { return port_; }
@@ -32,23 +30,33 @@ class PortConfig : public Configurable {
   int port_ = 0;
 };
 
-class BiDiPortConfig : public Configurable {
+static const char kPortConfigSchema[] = R"({
+    "type": "object",
+    "properties": {
+        "enable": { "title": "Enable", "type": "boolean" },
+        "port": { "title": "Port", "type": "integer" }
+    }
+  })";
+
+inline const String ConfigSchema(const PortConfig& obj) {
+  return kPortConfigSchema;
+}
+
+class BiDiPortConfig : public FileSystemSaveable {
  public:
   BiDiPortConfig(bool tx_enabled, bool rx_enabled, String tx_title,
-                 String rx_title, uint16_t port, String config_path,
-                 String description, int sort_order = 1000)
+                 String rx_title, uint16_t port, String config_path)
       : tx_enabled_(tx_enabled),
         rx_enabled_(rx_enabled),
         tx_title_(tx_title),
         rx_title_(rx_title),
         port_(port),
-        Configurable(config_path, description, sort_order) {
-    load_configuration();
+        FileSystemSaveable(config_path) {
+    load();
   }
 
-  virtual void get_configuration(JsonObject& doc) override;
-  virtual bool set_configuration(const JsonObject& config) override;
-  virtual String get_config_schema() override;
+  virtual bool to_json(JsonObject& root) override;
+  bool from_json(const JsonObject& config) override;
 
   bool get_tx_enabled() { return tx_enabled_; }
   bool get_rx_enabled() { return rx_enabled_; }
@@ -62,26 +70,41 @@ class BiDiPortConfig : public Configurable {
   String rx_title_ = "Receive";
 
   int port_ = 0;
+  friend const String ConfigSchema(const BiDiPortConfig& obj);
 };
 
-class HostPortConfig : public Configurable {
+static const char kBiDiPortConfigSchemaTemplate[] = R"({
+    "type": "object",
+    "properties": {
+        "enable_tx": { "title": "{{tx_title}}", "type": "boolean" },
+        "enable_rx": { "title": "{{rx_title}}", "type": "boolean" },
+        "port": { "title": "Port", "type": "integer" }
+    }
+  })";
+
+const inline String ConfigSchema(const BiDiPortConfig& obj) {
+  String schema = kBiDiPortConfigSchemaTemplate;
+  schema.replace("{{tx_title}}", obj.tx_title_);
+  schema.replace("{{rx_title}}", obj.rx_title_);
+  return schema.c_str();
+}
+
+class HostPortConfig : public FileSystemSaveable {
  public:
   HostPortConfig(bool enabled, String host, uint16_t port, String enabled_title,
-                 String host_title, String port_title, String config_path,
-                 String description, int sort_order = 1000)
+    String host_title, String port_title, String config_path)
       : enabled_(enabled),
         host_(host),
         port_(port),
         enabled_title_(enabled_title),
         host_title_(host_title),
         port_title_(port_title),
-        Configurable(config_path, description, sort_order) {
-    load_configuration();
+        FileSystemSaveable(config_path) {
+    load();
   }
 
-  virtual void get_configuration(JsonObject& doc) override;
-  virtual bool set_configuration(const JsonObject& config) override;
-  virtual String get_config_schema() override;
+  virtual bool to_json(JsonObject& root) override;
+  bool from_json(const JsonObject& config) override;
 
   bool get_enabled() { return enabled_; }
   String get_host() { return host_; }
@@ -94,46 +117,24 @@ class HostPortConfig : public Configurable {
   String enabled_title_;
   String host_title_;
   String port_title_;
+  friend const String ConfigSchema(const HostPortConfig& obj);
 };
 
-class CheckboxConfig : public Configurable {
- public:
-  CheckboxConfig(bool value, String title, String config_path,
-                 String description, int sort_order = 1000)
-      : value_(value),
-        title_(title),
-        Configurable(config_path, description, sort_order) {
-    load_configuration();
-  }
+static const char kHostPortConfigSchemaTemplate[] = R"({
+    "type": "object",
+    "properties": {
+        "enable": { "title": "{{title}}", "type": "boolean" },
+        "host": { "title": "{{host}}", "type": "string" },
+        "port": { "title": "{{port}}", "type": "integer" }
+    }
+  })";
 
-  virtual void get_configuration(JsonObject& doc) override;
-  virtual bool set_configuration(const JsonObject& config) override;
-  virtual String get_config_schema() override;
-
-  bool get_value() { return value_; }
-
- protected:
-  bool value_ = false;
-  String title_ = "Enable";
-};
-
-class StringConfig : public Configurable {
- public:
-  StringConfig(String& value, String& config_path, String& description,
-               int sort_order = 1000)
-      : value_(value), Configurable(config_path, description, sort_order) {
-    load_configuration();
-  }
-
-  virtual void get_configuration(JsonObject& doc) override;
-  virtual bool set_configuration(const JsonObject& config) override;
-  virtual String get_config_schema() override;
-
-  String get_value() { return value_; }
-
- protected:
-  String value_;
-  String title_ = "Value";
-};
+const inline String ConfigSchema(const HostPortConfig& obj) {
+  String schema = kHostPortConfigSchemaTemplate;
+  schema.replace("{{title}}", obj.enabled_title_);
+  schema.replace("{{host}}", obj.host_title_);
+  schema.replace("{{port}}", obj.port_title_);
+  return schema.c_str();
+}
 
 #endif  // SH_WG_SRC_UI_CONTROLS_H_

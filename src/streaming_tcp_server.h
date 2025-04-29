@@ -24,14 +24,26 @@ constexpr size_t kMaxClients = 10;
  *
  */
 class StreamingTCPServer : public ValueProducer<OriginString>,
-                           public ValueConsumer<OriginString>,
-                           public Startable {
+                           public ValueConsumer<OriginString> {
  public:
-  StreamingTCPServer(const uint16_t port, Networking *networking)
-      : Startable(50), networking_{networking}, port_{port} {
+  StreamingTCPServer(const uint16_t port, const std::shared_ptr<Networking> networking)
+      : networking_{networking}, port_{port} {
     server_ = new WiFiServer(port);
 
-    ReactESP::app->onRepeatMicros(100, [this]() {
+    event_loop()->onDelay(0, [this]() {
+      if (enabled_) {
+        networking_->connect_to(
+            new LambdaConsumer<WifiState>([this](WifiState state) {
+              if ((state == WiFiState::kWifiConnectedToAP) ||
+                  (state == WiFiState::kWifiAPModeActivated)) {
+                debugI("Starting Streaming TCP server on port %d", port_);
+                server_->begin();
+              }
+            }));
+      }
+    });
+
+    event_loop()->onRepeatMicros(100, [this]() {
       this->check_connections();
       this->check_client_input();
     });
@@ -47,14 +59,14 @@ class StreamingTCPServer : public ValueProducer<OriginString>,
     }
   }
 
-  void set_input(OriginString new_value, uint8_t input_channel = 0) override {
+  void set(const OriginString &new_value) override {
     send_buf(new_value);
   }
 
   void set_enabled(bool enabled) { enabled_ = enabled; }
 
  protected:
-  Networking *networking_;
+  const std::shared_ptr<Networking> networking_;
   WiFiServer *server_;
   const uint16_t port_;
 
@@ -76,7 +88,7 @@ class StreamingTCPServer : public ValueProducer<OriginString>,
 
   void check_connections() {
     // listen for incoming clients
-    WiFiClient client = server_->available();
+    WiFiClient client = server_->accept();
 
     if (client) {
       add_client(client);
@@ -103,19 +115,6 @@ class StreamingTCPServer : public ValueProducer<OriginString>,
           this->emit(value);
         }
       }
-    }
-  }
-
-  void start() override {
-    if (enabled_) {
-      networking_->connect_to(
-          new LambdaConsumer<WifiState>([this](WifiState state) {
-            if ((state == WiFiState::kWifiConnectedToAP) ||
-                (state == WiFiState::kWifiAPModeActivated)) {
-              debugI("Starting Streaming TCP server on port %d", port_);
-              server_->begin();
-            }
-          }));
     }
   }
 };

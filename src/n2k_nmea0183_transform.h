@@ -16,11 +16,11 @@ class N2KTo0183Transform : public Transform<tN2kMsg, OriginString> {
   N2KTo0183Transform(tNMEA2000* nmea2000, String config_path = "")
       : Transform(config_path), nmea2000_{nmea2000} {
     // invalidate old data
-    ReactESP::app->onRepeat(10, [this]() { this->invalidate_old_data(); });
+    event_loop()->onRepeat(10, [this]() { this->invalidate_old_data(); });
     // send RMC periodically
-    ReactESP::app->onRepeat(kRMCPeriod_, [this]() { this->send_rmc(); });
+    event_loop()->onRepeat(kRMCPeriod_, [this]() { this->send_rmc(); });
   }
-  virtual void set_input(tN2kMsg new_value, uint8_t input_channel = 0) override;
+  virtual void set(const tN2kMsg& new_value) override;
 
  protected:
   tNMEA2000* nmea2000_;  //< used to hardcode the origin

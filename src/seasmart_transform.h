@@ -29,7 +29,7 @@ class SeasmartTransform : public Transform<tN2kMsg, OriginString> {
   SeasmartTransform(tNMEA2000* nmea2000)
       : Transform<tN2kMsg, OriginString>(), nmea2000_{nmea2000} {}
 
-  void set_input(tN2kMsg input, uint8_t input_channel = 0) override {
+  void set(const tN2kMsg& input) override {
     String seasmart_str = GetSeaSmartString(input);
     // we're assuming that all tN2KMsg objects originate from nmea2000
     if (seasmart_str.length() > 0) {

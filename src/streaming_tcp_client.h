@@ -13,38 +13,46 @@
 
 using namespace sensesp;
 
+void ExecuteTCPClientTask(void* this_ptr);
+
 /**
  * @brief TCP client that is able to receive and transmit continuous data
  * streams.
  */
 class StreamingTCPClient : public ValueProducer<OriginString>,
-                           public ValueConsumer<OriginString>,
-                           public Startable {
+                           public ValueConsumer<OriginString> {
  public:
   StreamingTCPClient(const String& host, const uint16_t port,
-                     Networking* networking)
-      : Startable(50), networking_{networking}, host_{host}, port_{port} {
-    task_app_ = new ReactESP(false);
+                     const std::shared_ptr<Networking> networking)
+      : networking_{networking}, host_{host}, port_{port} {
     client_ = new BufferedTCPClient(WiFiClientPtr(new WiFiClient()));
     tx_queue_producer_ =
-        new TaskQueueProducer<OriginString*>(NULL, task_app_, 200, 491);
+        new TaskQueueProducer<OriginString*>(NULL, 200);
     rx_queue_producer_ =
-        new TaskQueueProducer<OriginString*>(NULL, ReactESP::app, 200, 492);
+        new TaskQueueProducer<OriginString*>(NULL, 200);
+
+    event_loop()->onDelay(0, [this]() {
+      if (enabled_) {
+        xTaskCreate(ExecuteTCPClientTask, "tcp_client_task", 4096, this, 1, NULL);
+
+        // emit received OriginStrings in the main task
+        rx_queue_producer_->connect_to(
+            new LambdaConsumer<OriginString*>([this](OriginString* origin_str) {
+              this->emit(*origin_str);
+              delete origin_str;
+            }));
+      } });
   }
 
-  void set_input(OriginString new_value, uint8_t input_channel = 0) override {
+  void set(const OriginString &new_value) override {
     OriginString* value_ptr = new OriginString(new_value);
-    bool retval = tx_queue_producer_->set(value_ptr);
-    if (retval == false) {
-      debugW("StreamingTCPClient: tx_queue_producer_ full, dropping value");
-      delete value_ptr;
-    }
+    tx_queue_producer_->set(value_ptr);
   }
 
   void set_enabled(bool enabled) { enabled_ = enabled; }
 
  protected:
-  Networking* networking_;
+  const std::shared_ptr<Networking> networking_;
   const String host_;
   const uint16_t port_;
 
@@ -55,11 +63,7 @@ class StreamingTCPClient : public ValueProducer<OriginString>,
 
   ObservableValue<OriginString> tx_string_;
 
-  ReactESP* task_app_ = nullptr;
-
   bool enabled_ = true;
-
-  void start() override;
 
   void execute_client_task() {
     // Receive strings to be transmitted in the tcp client task.
@@ -79,7 +83,7 @@ class StreamingTCPClient : public ValueProducer<OriginString>,
           }
         });
 
-    task_app_->onRepeat(2000, [this]() {
+    event_loop()->onRepeat(2000, [this]() {
       if (client_->client_->connected()) {
         // Send an empty line as a keepalive message. Without this,
         // disconnection detection takes just about forever.
@@ -87,24 +91,24 @@ class StreamingTCPClient : public ValueProducer<OriginString>,
       }
     });
 
-    task_app_->onRepeat(100, [this]() {
+    event_loop()->onRepeat(100, [this]() {
       // flush the TCP client TX buffer
       if (client_->client_->connected()) {
-        client_->client_->flush();
+        client_->client_->clear();
       }
     });
 
     tx_string_.connect_to(send_data);
 
     // receive any data sent to the client
-    task_app_->onRepeat(1, [this]() {
+    event_loop()->onRepeat(1, [this]() {
       if (client_->available() || client_->client_->connected()) {
         String line;
         int retval;
         while (this->client_->read_line(line)) {
           OriginString* value =
               new OriginString{origin_id(&client_->client_), line};
-          retval = this->rx_queue_producer_->set(value);
+          this->rx_queue_producer_->set(value);
           if (retval == false) {
             debugW(
                 "StreamingTCPClient: rx_queue_producer_ full, dropping value");
@@ -115,7 +119,7 @@ class StreamingTCPClient : public ValueProducer<OriginString>,
     });
 
     // try to establish a connection to the server
-    task_app_->onRepeat(1000, [this]() {
+    event_loop()->onRepeat(1000, [this]() {
       if (!client_->client_->connected()) {
         client_->client_->stop();
         client_->clear_buf();
@@ -126,7 +130,7 @@ class StreamingTCPClient : public ValueProducer<OriginString>,
     });
 
     while (true) {
-      task_app_->tick();
+      event_loop()->tick();
 
       // A small delay required to prevent the task watchdog from triggering.
       // This also limits the maximum packet rate but greatly reduces

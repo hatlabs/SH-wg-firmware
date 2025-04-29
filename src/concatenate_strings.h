@@ -25,10 +25,10 @@ class ConcatenateStrings : public Transform<OriginString, OriginString> {
       : Transform<OriginString, OriginString>(),
         max_delay_{max_delay},
         max_length_{max_length} {
-    ReactESP::app->onRepeat(1, [this]() { this->check_timeout(); });
+    event_loop()->onRepeat(1, [this]() { this->check_timeout(); });
   }
 
-  void set_input(const OriginString new_value, uint8_t input_channel) override {
+  void set(const OriginString& new_value) override {
     if (new_value.data.length() > max_length_) {
       debugW("Input string longer than max length: %s", new_value.data.c_str());
       return;

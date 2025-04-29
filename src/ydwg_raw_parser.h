@@ -18,8 +18,7 @@ class YDWGRawToCANFrameTransform : public Transform<OriginString, CANFrame> {
  public:
   YDWGRawToCANFrameTransform() : Transform<OriginString, CANFrame>() {}
 
-  void set_input(const OriginString ydwg_raw_str,
-                 uint8_t input_channel) override {
+  void set(const OriginString& ydwg_raw_str) override {
     CANFrame frame;
     char direction;
     struct timeval timestamp;

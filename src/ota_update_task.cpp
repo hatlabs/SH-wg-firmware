@@ -62,8 +62,6 @@ static const char* server_ca_certificate =
 
 static uint32_t latest_version = -1;
 
-static ReactESP* task_app;
-
 // a forward declaration is needed to resolve a circular dependency
 static void CheckWiFiSTA();
 
@@ -95,13 +93,12 @@ void OTAHttpEvent(HttpEvent_t* event) {
 
 static void BlinkRedLed() {
   // set up PWM to blink the red LED at 4 Hz
-  ledcSetup(kRedPWMChannel, 4, 8);
-  ledcAttachPin(kRedLedPin, kRedPWMChannel);
+  ledcAttach(kRedPWMChannel, 4, 8);
   ledcWrite(kRedPWMChannel, 127);  // 50% duty cycle
 }
 
 static void StopRedLedBlinking() {
-  ledcDetachPin(kRedLedPin);
+  ledcDetach(kRedLedPin);
   digitalWrite(kRedLedPin, HIGH);
 }
 
@@ -145,22 +142,22 @@ static void CheckForUpdates() {
         // compare the available version to the current version
         if (latest_version > kFirmwareHexVersion) {
           debugI("New firmware available");
-          task_app->onDelay(1, PerformOTAUpdate);
+          event_loop()->onDelay(1, PerformOTAUpdate);
         } else {
           debugD("No new firmware available; sleeping");
-          task_app->onDelay(kDelayBetweenFirmwareUpdateChecksMs, CheckWiFiSTA);
+          event_loop()->onDelay(kDelayBetweenFirmwareUpdateChecksMs, CheckWiFiSTA);
         }
       }
     } else {
       String error_string = https->errorToString(http_code);
       debugE("HTTPS GET failed, error: %s", error_string.c_str());
-      task_app->onDelay(kDelayAfterHTTPErrorMs, CheckWiFiSTA);
+      event_loop()->onDelay(kDelayAfterHTTPErrorMs, CheckWiFiSTA);
     }
   } else {
     // if we couldn't reach the server, try again in a minute
 
     debugD("HTTP connection failed");
-    task_app->onDelay(kDelayAfterFailedHTTPConnectionMs, CheckWiFiSTA);
+    event_loop()->onDelay(kDelayAfterFailedHTTPConnectionMs, CheckWiFiSTA);
   }
 
   delete https;
@@ -175,10 +172,10 @@ static void CheckWiFiSTA() {
   if (WiFi.status() == WL_CONNECTED && WiFi.getMode() == WIFI_STA) {
     // Connected and in STA mode; proceed to checking for OTA updates.
     debugD("WiFi connected and in STA mode.");
-    task_app->onDelay(1, CheckForUpdates);
+    event_loop()->onDelay(1, CheckForUpdates);
   } else {
     debugD("WiFi not connected or not in STA mode; waiting...");
-    task_app->onDelay(kDelayAfterFailedWiFiConnectionMs, CheckWiFiSTA);
+    event_loop()->onDelay(kDelayAfterFailedWiFiConnectionMs, CheckWiFiSTA);
   }
 }
 
@@ -201,18 +198,22 @@ static void CheckOTAStatus() {
 void ExecuteOTAUpdateTask(void* task_args) {
   debugD("Executing OTA update task");
 
-  // update the watchdog timer
-  esp_task_wdt_init(15, 0);
+  esp_task_wdt_config_t twdt_config = {
+        .timeout_ms = 15,
+        .idle_core_mask = (1 << 4) - 1,    // Bitmask of all cores
+        .trigger_panic = false,
+  };
 
-  task_app = new ReactESP(false);
+  // update the watchdog timer
+  esp_task_wdt_init(&twdt_config);
 
   // wait until WiFi is connected and in STA mode
-  task_app->onDelay(1, CheckWiFiSTA);
+  event_loop()->onDelay(1, CheckWiFiSTA);
 
-  task_app->onRepeat(1000, CheckOTAStatus);
+  event_loop()->onRepeat(1000, CheckOTAStatus);
 
   while (true) {
-    task_app->tick();
+    event_loop()->tick();
 
     // a small delay required to prevent the task watchdog from triggering
     delay(1);

@@ -49,5 +49,5 @@ void SetupButton() {
   button_config->setFeature(ButtonConfig::kFeatureLongPress);
   button_config->setFeature(ButtonConfig::kFeatureSuppressAfterLongPress);
 
-  app.onRepeat(4, []() { hall_button->check(); });
+  event_loop()->onRepeat(4, []() { hall_button->check(); });
 }

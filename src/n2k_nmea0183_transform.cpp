@@ -11,7 +11,7 @@ const double kPi = 3.14159265358979323846;
 
 const double rad_to_deg = 180.0 / kPi;
 
-void N2KTo0183Transform::set_input(tN2kMsg new_value, uint8_t input_channel) {
+void N2KTo0183Transform::set(const tN2kMsg& new_value) {
   switch (new_value.PGN) {
     case 127250:
       handle_heading(new_value);

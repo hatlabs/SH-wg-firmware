@@ -43,7 +43,7 @@ static void ScanWiFiNetworks() {
   debugD("Network scan finished");
   if (n == 0) {
     debugE("No WiFi networks found.");
-    app.onDelay(1000, ScanWiFiNetworks);
+    event_loop()->onDelay(1000, ScanWiFiNetworks);
     // turn the blued LED off
     digitalWrite(kBlueLedPin, LOW);
   } else {
@@ -55,8 +55,7 @@ static void ScanWiFiNetworks() {
         debugI("RSSI: %d", rssi);
         if (rssi > -60) {
           // make blue LED blink rapidly
-          ledcSetup(kBluePWMChannel, 8, 8);
-          ledcAttachPin(kBlueLedPin, kBluePWMChannel);
+          ledcAttach(kBluePWMChannel, 8, 8);
           ledcWrite(kBluePWMChannel, 127);  // 50% duty cycle
           debugI("Waiting for magnet test");
           return;
@@ -64,7 +63,7 @@ static void ScanWiFiNetworks() {
       }
     }
     debugE("Test WiFi network not found or RSSI too low.");
-    app.onDelay(500, ScanWiFiNetworks);
+    event_loop()->onDelay(500, ScanWiFiNetworks);
   }
 }
 
@@ -73,7 +72,7 @@ static void PrepareWiFiNetworkScan() {
   // Enable WiFi
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
-  app.onDelay(100, ScanWiFiNetworks);
+  event_loop()->onDelay(100, ScanWiFiNetworks);
 }
 
 static void HandleFactoryTestButtonEvent(AceButton* button, uint8_t event_type,
@@ -110,15 +109,14 @@ static void SetupFactoryTestButton() {
   button_config->setFeature(ButtonConfig::kFeatureLongPress);
   button_config->setFeature(ButtonConfig::kFeatureSuppressAfterLongPress);
 
-  app.onRepeat(4, []() { hall_button->check(); });
+  event_loop()->onRepeat(4, []() { hall_button->check(); });
 }
 
 void SetupFactoryTest() {
   debugD("Setting up factory test mode");
   // Make the yellow LED blink as a sign of the factory test mode
-  ledcSetup(kYellowPWMChannel, 4, 8);
+  ledcAttach(kYellowPWMChannel, 4, 8);
   pinMode(kYellowLedPin, OUTPUT);
-  ledcAttachPin(kYellowLedPin, kYellowPWMChannel);
   // blink at 50% duty cycle
   ledcWrite(kYellowPWMChannel, 127);
 
@@ -133,5 +131,5 @@ void SetupFactoryTest() {
 
   SetupFactoryTestButton();
 
-  app.onDelay(1000, PrepareWiFiNetworkScan);
+  event_loop()->onDelay(1000, PrepareWiFiNetworkScan);
 }

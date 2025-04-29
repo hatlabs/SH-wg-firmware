@@ -12,9 +12,9 @@ class StringTokenizer : public SymmetricTransform<OriginString> {
  public:
   StringTokenizer(String delimiter, String config_path = "")
       : SymmetricTransform<OriginString>(config_path), delimiter_{delimiter} {
-    this->load_configuration();
+    load();
   }
-  void set_input(OriginString value, uint8_t input_channel) override {
+  void set(const OriginString& value) override {
     int pos;
     String value_string = value.data;
     while ((pos = value_string.indexOf(delimiter_)) != -1) {

@@ -31,7 +31,8 @@
 #include "sensesp/net/networking.h"
 #include "sensesp/system/lambda_consumer.h"
 #include "sensesp/system/led_blinker.h"
-#include "sensesp/ui/ui_output.h"
+#include "sensesp/system/serial_number.h"
+#include "sensesp/ui/ui_controls.h"
 #include "sensesp/transforms/lambda_transform.h"
 #include "sensesp_minimal_app_builder.h"
 #include "shwg.h"
@@ -81,11 +82,11 @@ StreamingTCPClient *nmea0183_tcp_client;
 // time elapsed since last system time update
 elapsedMillis elapsed_since_last_system_time_update = kTimeUpdatePeriodMs;
 
-reactesp::ReactESP app;
-
-SensESPMinimalApp *sensesp_app;
-
-Networking *networking;
+std::shared_ptr<Networking> networking;
+std::shared_ptr<MDNSDiscovery> mdns_discovery;
+std::shared_ptr<HTTPServer> http_server;
+std::shared_ptr<SystemStatusController> system_status_controller;
+std::shared_ptr<SystemStatusLed> system_status_led;
 
 CheckboxConfig *checkbox_config_enable_firmware_updates;
 BiDiPortConfig *port_config_ydwg_raw_tcp;
@@ -97,50 +98,37 @@ PortConfig *port_config_nmea0183_tcp_tx;
 HostPortConfig *port_config_nmea0183_tcp_client;
 PortConfig *port_config_nmea0183_udp_tx;
 
-UIOutput<String> ui_output_firmware_name("Firmware name", kFirmwareName,
+StatusPageItem<String> ui_output_firmware_name("Firmware name", kFirmwareName,
                                          "Firmware", 100);
-UIOutput<String> ui_output_firmware_version("Firmware version",
+StatusPageItem<String> ui_output_firmware_version("Firmware version",
                                             kFirmwareVersion, "Firmware", 110);
-UIOutput<String> ui_output_build_info =
-    UIOutput<String>("Built at", __DATE__ " " __TIME__, "Firmware", 120);
+StatusPageItem<String> ui_output_build_info =
+    StatusPageItem<String>("Built at", __DATE__ " " __TIME__, "Firmware", 120);
 
-UILambdaOutput<String> ui_output_hostname = UILambdaOutput<String>(
-    "Hostname", []() { return sensesp_app->get_hostname(); }, "WiFi", 200);
-UILambdaOutput<String> ui_output_ip_address = UILambdaOutput<String>(
-    "IP address", []() { return WiFi.localIP().toString(); }, "WiFi", 210);
-UILambdaOutput<String> ui_output_mac_address = UILambdaOutput<String>(
-    "MAC", []() { return WiFi.macAddress(); }, "WiFi", 220);
-UILambdaOutput<String> ui_output_wifi_ssid =
-    UILambdaOutput<String>("SSID", []() { return WiFi.SSID(); }, "WiFi", 230);
-UILambdaOutput<int8_t> ui_output_wifi_rssi = UILambdaOutput<int8_t>(
-    "WiFi signal strength (dB)", []() { return WiFi.RSSI(); }, "WiFi", 240);
+StatusPageItem<String> ui_output_hostname = StatusPageItem<String>(
+    "Hostname", "", "Network", 200);
+StatusPageItem<String> ui_output_ip_address = StatusPageItem<String>(
+    "IP address", "", "WiFi", 210);
+StatusPageItem<String> ui_output_mac_address = StatusPageItem<String>(
+    "MAC", "", "WiFi", 220);
+StatusPageItem<String> ui_output_wifi_ssid =
+    StatusPageItem<String>("SSID", "", "WiFi", 230);
+StatusPageItem<int8_t> ui_output_wifi_rssi = StatusPageItem<int8_t>(
+    "WiFi signal strength (dB)", -128, "WiFi", 240);
 
 uint32_t can_frame_rx_counter = 0;
 uint32_t can_frame_tx_counter = 0;
 
-UILambdaOutput<uint32_t> ui_output_can_frame_rx_counter(
-    "CAN frame RX counter", []() { return can_frame_rx_counter; }, "NMEA 2000",
-    300);
+StatusPageItem<uint32_t> ui_output_can_frame_rx_counter(
+    "CAN frame RX counter", 0, "NMEA 2000", 300);
 
-UILambdaOutput<uint32_t> ui_output_can_frame_tx_counter(
-    "CAN frame TX counter", []() { return can_frame_tx_counter; }, "NMEA 2000",
-    310);
+StatusPageItem<uint32_t> ui_output_can_frame_tx_counter(
+    "CAN frame TX counter", 0, "NMEA 2000", 310);
 
-UILambdaOutput<int> ui_output_uptime(
-    "Uptime", []() { return millis() / 1000; }, "Runtime", 400);
-
-UILambdaOutput<int> ui_output_free_heap(
-    "Free memory", []() { return ESP.getFreeHeap(); }, "Runtime", 410);
+StatusPageItem<int> ui_output_uptime("Uptime", 0, "Runtime", 400);
+StatusPageItem<int> ui_output_free_heap("Free memory", 0, "Runtime", 410);
 
 int led_state = -1;
-
-uint64_t GetBoardSerialNumber() {
-  uint8_t chipid[6];
-  esp_efuse_mac_get_default(chipid);
-  return ((uint64_t)chipid[0] << 0) + ((uint64_t)chipid[1] << 8) +
-         ((uint64_t)chipid[2] << 16) + ((uint64_t)chipid[3] << 24) +
-         ((uint64_t)chipid[4] << 32) + ((uint64_t)chipid[5] << 40);
-}
 
 // Set system time if the correct PGN is received
 void SetSystemTime(const tN2kMsg &n2k_msg) {
@@ -239,53 +227,6 @@ void InitNMEA2000() {
       [](CANFrame frame) { can_frame_rx_counter++; }));
 
   nmea2000->Open();
-}
-
-static void SetupBlueLEDBlinker() {
-  // set up the PWM channel for the blue LED
-  ledcSetup(kBluePWMChannel, 2, 16);
-
-  auto wifi_state_consumer =
-      new LambdaConsumer<WiFiState>([](const WiFiState state) {
-        switch (state) {
-          case WiFiState::kWifiNoAP:
-          case WiFiState::kWifiDisconnected:
-            ledcDetachPin(kBlueLedPin);
-            digitalWrite(kBlueLedPin, LOW);
-            break;
-          case WiFiState::kWifiConnectedToAP:
-            digitalWrite(kBlueLedPin, HIGH);
-            break;
-          case WiFiState::kWifiManagerActivated:
-            ledcAttachPin(kBlueLedPin, kBluePWMChannel);
-            // blink the blue LED at 2 Hz and 12.5% duty cycle
-            ledcWrite(kBluePWMChannel, 65536 / 8);
-            break;
-          case WiFiState::kWifiAPModeActivated:
-            ledcAttachPin(kBlueLedPin, kBluePWMChannel);
-            // blink the blue LED at 2 Hz and 87.5% duty cycle
-            ledcWrite(kBluePWMChannel, 65536 * 7 / 8);
-            break;
-          default:
-            digitalWrite(kBlueLedPin, LOW);
-            break;
-        }
-      });
-
-  networking->connect_to(wifi_state_consumer);
-}
-
-static void SetupYellowLEDBlinker(
-    ValueProducer<OriginString> *string_producer) {
-  static int solid_on_pattern[] = {1000, 0, PATTERN_END};
-  auto blinker = new PatternBlinker(kYellowLedPin, solid_on_pattern);
-
-  string_producer->connect_to(
-      new LambdaConsumer<OriginString>([blinker](const OriginString &str) {
-        if (WiFi.isConnected()) {
-          blinker->blip(5);
-        }
-      }));
 }
 
 static void SetupConnections() {
@@ -454,7 +395,6 @@ static void SetupConnections() {
 
   if (port_config_ydwg_raw_udp->get_tx_enabled()) {
     debugD("Connecting YDWG RAW to UDP TX");
-    SetupYellowLEDBlinker(can_to_ydwg_transform);
 
     concatenate_ydwg_strings->connect_to(ydwg_raw_udp_server);
   }
@@ -492,65 +432,80 @@ void PrintProductInfo() {
 
 void SetupUIComponents() {
   checkbox_config_enable_firmware_updates = new CheckboxConfig(
-      true, "Enable", "/System/Enable Firmware Updates",
+      true, "Enable", "/System/Enable Firmware Updates");
+  ConfigItem(checkbox_config_enable_firmware_updates)
+    ->set_description(
       "If enabled, the device will periodically check online and "
-      "install any available firmware updates.",
-      1100);
+      "install any available firmware updates."
+      )
+    ->set_sort_order(1100);
 
   port_config_ydwg_raw_tcp = new BiDiPortConfig(
       true, false, "Transmit to WiFi", "Receive from WiFi",
-      kDefaultYdwgRawTCPServerPort, "/Network/YDWG RAW TCP Server",
-      "Enable TCP server for transmitting and/or receiving YDWG RAW data.",
-      1300);
+      kDefaultYdwgRawTCPServerPort, "/Network/YDWG RAW TCP Server");
+  ConfigItem(port_config_ydwg_raw_tcp)
+    ->set_description("Enable TCP server for transmitting and/or receiving YDWG RAW data.")
+    ->set_sort_order(1300);
 
   port_config_ydwg_raw_tcp_client = new HostPortConfig(
       false, "", kDefaultYdwgRawTCPServerPort, "Enabled", "Server hostname",
-      "Server port", "/Network/YDWG RAW TCP Client",
+      "Server port", "/Network/YDWG RAW TCP Client");
+  ConfigItem(port_config_ydwg_raw_tcp_client)
+    ->set_description(
       "Connect to another TCP server for transmitting and receiving YDWG RAW "
-      "data.",
-      1350);
+      "data.")
+    ->set_sort_order(1350);
 
   port_config_ydwg_raw_udp = new BiDiPortConfig(
       true, false, "Transmit to WiFi", "Receive from WiFi",
-      kDefaultYdwgRawUDPServerPort, "/Network/YDWG RAW over UDP",
-      "Broadcast and/or receive NMEA 2000 traffic as YDWG RAW over UDP.", 1400);
+      kDefaultYdwgRawUDPServerPort, "/Network/YDWG RAW over UDP");
+  ConfigItem(port_config_ydwg_raw_udp)
+    ->set_description("Broadcast and/or receive NMEA 2000 traffic as YDWG RAW over UDP.")
+    ->set_sort_order(1400);
 
   checkbox_config_translate_to_seasmart = new CheckboxConfig(
-      false, "Enable", "/Network/Translate to SeaSmart",
+      false, "Enable", "/Network/Translate to SeaSmart");
+  ConfigItem(checkbox_config_translate_to_seasmart)
+    ->set_description(
       "Translate NMEA 2000 messages to SeaSmart.Net format. "
       "NMEA 0183 output must be enabled for the SeaSmart.Net messages to "
-      "be transmitted.",
-      1600);
+      "be transmitted."
+      )
+    ->set_sort_order(1600);
 
   checkbox_config_translate_to_nmea0183 = new CheckboxConfig(
-      true, "Enable", "/Network/Translate to NMEA 0183",
-      "Translate NMEA 2000 messages to NMEA 0183 sentences. "
+      true, "Enable", "/Network/Translate to NMEA 0183");
+  ConfigItem(checkbox_config_translate_to_nmea0183)
+    ->set_description("Translate NMEA 2000 messages to NMEA 0183 sentences. "
       "NMEA 0183 output must be enabled for the sentences to "
-      "be transmitted.",
-      1700);
+      "be transmitted.")
+    ->set_sort_order(1700);
 
   port_config_nmea0183_tcp_tx = new PortConfig(
-      true, kDefaultNMEA0183TCPServerPort, "/Network/NMEA 0183 TCP Server",
-      "Enable a TCP server for transmitting NMEA 0183 and SeaSmart.Net data.",
-      1800);
+      true, kDefaultNMEA0183TCPServerPort, "/Network/NMEA 0183 TCP Server");
+  ConfigItem(port_config_nmea0183_tcp_tx)
+    ->set_description("Enable a TCP server for transmitting NMEA 0183 and SeaSmart.Net data.")
+    ->set_sort_order(1800);
 
   port_config_nmea0183_tcp_client = new HostPortConfig(
       false, "", kDefaultNMEA0183TCPServerPort, "Enabled", "Server hostname",
-      "Server port", "/Network/NMEA 0183 TCP Client",
+      "Server port", "/Network/NMEA 0183 TCP Client");
+  ConfigItem(port_config_nmea0183_tcp_client)
+    ->set_description(
       "Connect to another TCP server for transmitting NMEA 0183 and "
-      "SeaSmart.Net data.",
-      1850);
+      "SeaSmart.Net data.")
+    ->set_sort_order(1850);
 
   port_config_nmea0183_udp_tx = new PortConfig(
-      true, kDefaultNMEA0183UDPServerPort, "/Network/NMEA 0183 over UDP",
-      "Broadcast NMEA 0183 and SeaSmart.Net data over UDP.", 1900);
+      true, kDefaultNMEA0183UDPServerPort, "/Network/NMEA 0183 over UDP");
+  ConfigItem(port_config_nmea0183_udp_tx)
+    ->set_description("Broadcast NMEA 0183 and SeaSmart.Net data over UDP.")
+    ->set_sort_order(1900);
 }
 
 // The setup function performs one-time application initialization.
 void setup() {
-#ifndef SERIAL_DEBUG_DISABLED
-  SetupSerialDebug(115200);
-#endif
+  SetupLogging();
 
   // check if we should enter the factory test mode
   if (FactoryTestRequested()) {
@@ -571,18 +526,17 @@ void setup() {
   String hostname = "sh-wg";
 
   SensESPMinimalAppBuilder builder;
-  sensesp_app = builder.set_hostname(hostname)->get_app();
+  auto sensesp_app = (&builder)->set_hostname(hostname)->get_app();
 
   // UI components can only be instantiated once the SensESPBaseApp
   // has been created and filesystem mounted
 
   SetupUIComponents();
 
-  networking = new Networking("/System/WiFi Settings", "", "",
-                              SensESPBaseApp::get_hostname(),
-                              kWiFiCaptivePortalPassword);
-
-  networking->set_wifi_manager_ap_ssid(String("Configure SH-wg ") + mac_str);
+  String ssid = String("Configure SH-wg ") + mac_str;
+  networking = std::make_shared<Networking>("/System/WiFi Settings", "", "",
+                              ssid, kWiFiCaptivePortalPassword);
+  ConfigItem(networking);
 
   networking->connect_to(new LambdaConsumer<WiFiState>([](WiFiState state) {
     // turn of WiFi power saving when connected
@@ -593,9 +547,27 @@ void setup() {
   }));
 
   // create the MDNS discovery object
-  auto mdns_discovery_ = new MDNSDiscovery();
+  mdns_discovery = std::make_shared<MDNSDiscovery>();
+  http_server = std::make_shared<HTTPServer>();
 
-  auto *http_server = new HTTPServer();
+  // Add the default HTTP server response handlers
+  add_static_file_handlers(http_server);
+  add_base_app_http_command_handlers(http_server);
+  add_app_http_command_handlers(http_server, networking);
+  add_config_handlers(http_server);
+
+  // Hook up a repeater to update the system page UI controls
+  event_loop()->onRepeat(4999, []() {
+    ui_output_hostname.set(WiFi.getHostname());
+    ui_output_ip_address.set(WiFi.localIP().toString());
+    ui_output_mac_address.set(WiFi.macAddress());
+    ui_output_wifi_ssid.set(WiFi.SSID());
+    ui_output_wifi_rssi.set(WiFi.RSSI());
+    ui_output_can_frame_rx_counter.set(can_frame_rx_counter);
+    ui_output_can_frame_tx_counter.set(can_frame_tx_counter);
+    ui_output_uptime.set(millis() / 1000);
+    ui_output_free_heap.set(ESP.getFreeHeap());
+  });
 
   if (checkbox_config_enable_firmware_updates->get_value()) {
     xTaskCreate(ExecuteOTAUpdateTask, "OTAUpdateTask", 8000, NULL, 1, NULL);
@@ -622,8 +594,10 @@ void setup() {
   SetupButton();
 
   debugD("Set up the blue LED blinker");
-
-  SetupBlueLEDBlinker();
+  system_status_controller = std::make_shared<SystemStatusController>();
+  system_status_led = std::make_shared<SystemStatusLed>(kBluePWMChannel);
+  system_status_controller->connect_to(
+      system_status_led->get_system_status_consumer());
 
   // Initialize the NMEA2000 library
   nmea2000 = new tNMEA2000_esp32_FH(kCanTxPin, kCanRxPin);
@@ -638,13 +612,13 @@ void setup() {
 
   SetupConnections();
 
-  app.onRepeat(1000, []() {
+  event_loop()->onRepeat(1000, []() {
     debugD("Uptime: %lu, CAN RX: %d CAN TX: %d", millis() / 1000,
            can_frame_rx_counter, can_frame_tx_counter);
   });
 
   // Handle incoming NMEA 2000 messages
-  app.onRepeatMicros(50, []() { nmea2000->ParseMessages(); });
+  event_loop()->onRepeatMicros(50, []() { nmea2000->ParseMessages(); });
 
   // app.onAvailable(Serial, []() {
   //   // Flush the incoming serial buffer
@@ -652,8 +626,6 @@ void setup() {
   //     Serial.read();
   //   }
   // });
-
-  sensesp_app->start();
 }
 
-void loop() { app.tick(); }
+void loop() { event_loop()->tick(); }
